@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import date_library as datelib
 
 def clean_dataframe(df0):
@@ -170,5 +171,59 @@ def party_size(df):
     max_party_sz = party_sz.max()
     print("max party siz: ", max_party_sz)
     df['PARTY_SZ'] = dfg['TRUE_OD'].transform('size')
+    return df
+#-----------------------------------------------------------
+def get_dayofweek_month(df, df_date_col='date', labels=('date', 'month', 'dayofweek')):
+    """
+    Add Month and day of week columns to df compouted from date_range
+
+    Arguments
+    ---------
+    df: DataFrame with a date (string) column
+    df_date_col: name of date columns in df
+    labels: labels to assign to the month and dayofweek
+
+    Return
+    ------
+    A dataframe with three string columns: day, month, day of week
+    """
+
+    df1 = df.copy()
+
+    # Convert timestamps to dates
+    assert(type(df.iloc[0][df_date_col]) == np.int64)
+
+    min_date = df[df_date_col].min()
+    max_date = df[df_date_col].max()
+
+    # Convert two timestamps to dates
+    min_date = datelib.timestampToDateTimePTY(min_date)[0]
+    max_date = datelib.timestampToDateTimePTY(max_date)[0]
+
+    days = pd.date_range(min_date, max_date, freq='D').to_series()   # strings
+
+    day_of_week = days.dt.day_of_week.astype(int)
+    date = days.dt.date.astype(str)
+    month = days.dt.month.astype(int)
+
+    days_df = pd.DataFrame({labels[0]: date, labels[2]: day_of_week, labels[1]: month}).reset_index(drop=True)
+    days_df['dates'] = days_df[labels[0]]
+    #print("days_df: ", days_df.columns)
+
+    # create a string date column from timestamp
+    df1['dates'] = df[df_date_col].apply(datelib.timestampToDateTimePTY).apply(lambda x: x[0])
+
+    #print("df1: ", df1.columns, df1.FLIGHT_DATE.head())
+    #print("days_df: ", days_df.columns, days_df[df_date_col].head())
+
+    df = pd.merge(df1, days_df, how='inner', on='dates')
+    #df = pd.merge(df1, days_df, how='inner', left_on='dates', right_on='dates')
+    try:
+        #print(df['dates'].head())
+        df = df.drop('dates', axis=1, inplace=False)
+    except:
+        print("except")
+        pass
+
     return df
 #-----------------------------------------------------------

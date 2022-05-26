@@ -53,6 +53,7 @@ def dateTimePTYToTimestamp(date='2019/10/01', tim='20:00'): #, UTC_offset='0'):
     return int(datetime.timestamp(date))
 #------------------------------------------------------------
 def to_datetime(series):
+    # Input: a flight identifier (OD, flight#, departure date/time)
     series_tmz = series.str[-12:-7]
     series_dtz = pd.to_datetime(series)
     return pd.concat([series_dtz, series_tmz], axis=1)
