@@ -65,3 +65,10 @@ factorization.
 analyze_PNR.ipynb 
 produces the file  "activity_reduced_before_attributes.csv"
 that will be used as a starting point to compute attributes to be used in Factorizaiton Machine
+
+=============================================================
+create_attributers.ipynb
+Read output from analyze_PNR.ipynb and create attributes. 
+Write result to file activity_reduced_with_attributes.csv
+
+============================================================
