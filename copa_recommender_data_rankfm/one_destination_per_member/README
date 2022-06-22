@@ -1,0 +1,5 @@
+Each file contains data for a single year.
+Users are member IDs. 
+Items are destinations, a form of implicit feedback. 
+In a single year, each passenger only flies to a destination once.
+
