@@ -1,1 +1,7 @@
 https://github.com/erlebach/copa_recommenders.git
+
+one-hot.ipynb: 
+Read in activity_reduced_with_attributes.csv
+Output: member_dest_{year}.csv and member_attrib_{year}.csv
+
+This is the last step before applying rankFM algorithm.
