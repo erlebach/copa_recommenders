@@ -48,14 +48,13 @@ def hit_rate(model, test_interactions, k=10, filter_previous=False, max_kept=0, 
                 valid_dests = test_recs.loc[member,:].values
                 for D in valid_dests:
                     if D in train_interactions.loc[member].Dset:
-                        print("gordon")
                         # Need a counter, initialized to zero. Once it reaches max_kept
-                        count = 0
+                        counter = 0
                         if counter < max_kept:
                             ranked_dests.append(D)
                         # Allow a number of times equal to max_kept
                     else:
-                        ranked_dsts.append(D)
+                        ranked_dests.append(D)
                     pass
 
                 # if len(ranked_dsts) == k, then get out of loop. 
