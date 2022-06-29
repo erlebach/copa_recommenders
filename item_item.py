@@ -95,7 +95,8 @@ def normalize_model_cols(model):
 
     for j in range(n_items):
         n = np.linalg.norm(model2[:,j])
-        model2[:,j] = model2[:,j] / n
+        if n != 0:
+            model2[:,j] = model2[:,j] / n
 
     return model2
 #---------------------------------------------------------
@@ -146,6 +147,14 @@ def topN_recommend(model, userId, data,  N):
     return (topN, items, flew_to)
 #---------------------------------------------------------
 def get_raw_users(data, year):
+    """
+    Get list of members in a given year. 
+    
+    Parameters: 
+    -----------
+    data (Dictionary) : (key,value) = (year, filtered dataframe)
+    year (str) : year filter
+    """
     members = set()
     d = data[year]
 
@@ -168,7 +177,8 @@ def destination_items(member_list, data, users_common):
     return user_dest_d
 #---------------------------------------------------------
 def predictions(members, d, simil_matrix, train_year='2016', test_year='2017', verbose=False):
-    # print("train_year:", train_year, ",  test_year: ", test_year)
+    #print("train_year:", train_year, ",  test_year: ", test_year, type(test_year))
+    #print(members.keys())
     users = members[train_year].intersection(members[test_year])
     sim = simil_matrix[train_year]
     sim1 = normalize_model_cols(sim)
@@ -193,6 +203,58 @@ def predictions(members, d, simil_matrix, train_year='2016', test_year='2017', v
 
     print(f"Percentage with a correct prediction {test_year} based on {train_year}: {count_correct}/{count_total}: {count_correct / count_total}")
 #---------------------------------------------------------
+def tst():
+    print("gordon")
+#---------------------------------------------------------
+def predictions_month(members, d, simil_matrix, train_month=15, test_month=16, verbose=False):
+    users = members[train_month].intersection(members[test_month])
+    sim = simil_matrix[train_month]
+    sim1 = normalize_model_cols(sim)
+    N = 3
+    count_correct = 0
+    count_total = 0
+    user_dest = destination_items(users, d[test_month], users)
+
+    for userId in list(users):   # users_common
+        user_train = d[train_month].to_inner_uid(userId)
+        topN, items, train_flew_to = topN_recommend(sim1, user_train, d[train_month], N=N)
+        raw_uid = userId
+        test_flew_to = user_dest[raw_uid]
+        # Intersect predictions with 2017 flights
+        correct_pred = set(items).intersection(set(test_flew_to))
+        count_total += 1
+        if len(correct_pred) > 0:
+            count_correct += 1
+        if verbose and topN[0] > 0.:
+            print(f"{topN[0:N]}, {items}, {train_year}-flights: {train_flew_to}, {test_year}-flights: {test_flew_to}, ==> Correct: {list(correct_pred)}")
+            pass
+
+    print(f"Percentage with a correct prediction in month {test_month} based on month {train_month}: {count_correct}/{count_total}: {count_correct / count_total}")
+#---------------------------------------------------------
+def predictions_month_freq(members, d, simil_matrix, train_month=15, test_month=16, verbose=False):
+    users = members[train_month].intersection(members[test_month])
+    sim = simil_matrix[train_month]
+    sim1 = normalize_model_cols(sim)
+    N = 3
+    count_correct = 0
+    count_total = 0
+    user_dest = destination_items(users, d[test_month], users)
+
+    for userId in list(users):   # users_common
+        user_train = d[train_month].to_inner_uid(userId)
+        topN, items, train_flew_to = topN_recommend(sim1, user_train, d[train_month], N=N)
+        raw_uid = userId
+        test_flew_to = user_dest[raw_uid]
+        # Intersect predictions with 2017 flights
+        correct_pred = set(items).intersection(set(test_flew_to))
+        count_total += 1
+        if len(correct_pred) > 0:
+            count_correct += 1
+        if verbose and topN[0] > 0.:
+            print(f"{topN[0:N]}, {items}, {train_year}-flights: {train_flew_to}, {test_year}-flights: {test_flew_to}, ==> Correct: {list(correct_pred)}")
+            pass
+
+    print(f"Percentage with a correct prediction in month {test_month} based on month {train_month}: {count_correct}/{count_total}: {count_correct / count_total}")
 #---------------------------------------------------------
 #---------------------------------------------------------
 #---------------------------------------------------------
