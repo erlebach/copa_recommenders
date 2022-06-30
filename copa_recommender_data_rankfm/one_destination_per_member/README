@@ -1,3 +1,5 @@
+Use rankfm with and without user attributes (age, number_destinations (?), add_country_orig)
+
 Each file contains data for a single year.
 Users are member IDs. 
 Items are destinations, a form of implicit feedback. 

@@ -35,9 +35,13 @@ def hit_rate(model, test_interactions, k=10, filter_previous=False, max_kept=0, 
     # print(len(comm_user), len(test_recs)) # same values
 
     # Next section should be done inside pyx code, but I do not have access. 
-    if filter_previous == False and max_kept == 1:
-        assert (train_interactions != None, "train_interactions must be defined")
+    if filter_previous == False and max_kept > 0:
+        assert train_interactions != None, "train_interactions must be defined"
+        print("function_lib.hit_rate: train_interactions: ", train_interactions)  # <<< MUST FIX
         train_members = set(train_interactions.index)
+        print(type(train_interactions))
+        print(train_interactions)
+        #train_interactions = train_interactions.to_frame('Dset') # orig? 
         train_interactions = train_interactions.to_frame('Dset')
         #print(train_interactions)
         #print("train_members: ", train_members)
