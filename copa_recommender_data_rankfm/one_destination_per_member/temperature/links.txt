@@ -1,0 +1,80 @@
+Venezuela, https://weatherspark.com/countries/VE
+Peru, https://weatherspark.com/countries/PE
+Cuba, https://weatherspark.com/countries/CU
+Panama, https://weatherspark.com/countries/PA
+Argentina, https://weatherspark.com/countries/AR
+Columbia, https://weatherspark.com/countries/CO
+Belize, https://weatherspark.com/y/150211/Average-Weather-in-Belize-Year-Round
+Paraguay, https://weatherspark.com/countries/PY
+Guyana, https://weatherspark.com/countries/GY
+Brazil, https://weatherspark.com/countries/BR
+Jamaica, https://weatherspark.com/countries/JA  (constant temperature across island)
+Nicaragua, https://weatherspark.com/countries/NI  (constant temperature across island)
+Jamaica, https://weatherspark.com/y/150208/Average-Weather-in-Bahamas-Year-Round (constant temperature throughout islands)
+Aruba, https://weatherspark.com/y/150199/Average-Weather-in-Aruba-Year-Round (constant temp throughout year and country)
+Sint Maartens, https://weatherspark.com/y/150280/Average-Weather-in-Sint-Maarten-Year-Round (const temp throughout year)
+Guatemala, https://weatherspark.com/countries/GT
+Ecuador, https://weatherspark.com/countries/EC
+Haiti, https://weatherspark.com/y/150235/Average-Weather-in-Haiti-Year-Round
+Bolivia, https://weatherspark.com/countries/BO
+Chile, https://weatherspark.com/countries/CL
+Honduras, https://weatherspark.com/y/33021/Average-Weather-in-Tr%C3%A1-Mh%C3%B3r-Ireland-Year-Round
+Curacao, https://weatherspark.com/y/150216/Average-Weather-in-Curacao-Cura%C3%A7ao-Year-Round
+Costa Rica, https://weatherspark.com/countries/CR
+
+Belo Horizonte,Brazil,CNF,SBCF,Tancredo Neves International Airport,
+Campinas,Brazil,VCP,SBKP,Viracopos International Airport,[9]
+Manaus,Brazil,MAO,SBEG,Eduardo Gomes International Airport,
+Porto Alegre,Brazil,POA,SBPA,Salgado Filho International Airport,
+Salvador,Brazil,SSA,SBSV,Deputado Luís Eduardo Magalhães International Airport,[7]
+
+Atlanta,United States,ATL,KATL,Hartsfield–Jackson Atlanta International Airport,[3]
+Boston,United States,BOS,KBOS,Logan International Airport,[6]
+Chicago,United States,ORD,KORD,O'Hare International Airport,
+Denver,United States,DEN,KDEN,Denver International Airport,[13]
+Fort Lauderdale,United States,FLL,KFLL,Fort Lauderdale-Hollywood International Airport,[14]
+Las Vegas,United States,LAS,KLAS,Harry Reid International Airport,
+New Orleans,United States,MSY,KMSY,Louis Armstrong International Airport,[20]
+Orlando,United States,MCO,KMCO,Orlando International Airport,
+San Francisco,United States,SFO,KSFO,San Francisco International Airport,[26]
+Tampa,United States,TPA,KTPA,Tampa International Airport,[28]
+Washington D.C.,United States,IAD,KIAD,Washington Dulles International Airport,
+
+ATL, https://weatherspark.com/y/146640/Average-Weather-at-Hartsfield-Jackson-Atlanta-International-Airport-Georgia-United-States-Year-Round
+BOS, https://weatherspark.com/y/147265/Average-Weather-at-Logan-International-Airport-Massachusetts-United-States-Year-Round
+ORD, https://weatherspark.com/y/146513/Average-Weather-at-Chicago-O'Hare-International-Airport-Illinois-United-States-Year-Round
+DEN, https://weatherspark.com/search?ic=false&p=0&q=den 
+FLL, https://weatherspark.com/y/146872/Average-Weather-at-Fort-Lauderdale-Hollywood-International-Airport-Florida-United-States-Year-Round
+LAS, https://weatherspark.com/y/145433/Average-Weather-at-McCarran-International-Airport-Nevada-United-States-Year-Round
+MSY, https://weatherspark.com/y/146338/Average-Weather-at-Louis-Armstrong-New-Orleans-International-Airport-Louisiana-United-States-Year-Round
+MCO, https://weatherspark.com/y/146802/Average-Weather-at-Orlando-International-Airport-Florida-United-States-Year-Round
+SFO, https://weatherspark.com/y/145212/Average-Weather-at-San-Francisco-International-Airport-California-United-States-Year-Round
+TPA, https://weatherspark.com/y/146740/Average-Weather-at-Tampa-International-Airport-Florida-United-States-Year-Round
+IAD, https://weatherspark.com/y/147046/Average-Weather-at-Washington-Dulles-International-Airport-Virginia-United-States-Year-Round
+GDL, https://weatherspark.com/y/145704/Average-Weather-at-Guadalajara-International-Airport-Mexico-Year-Round
+
+VSA, https://weatherspark.com/y/149778/Average-Weather-at-Carlos-Rovirosa-P%C3%A9rez-International-Airport-Mexico-Year-Round
+PVR, https://weatherspark.com/y/145643/Average-Weather-at-Licenciado-Gustavo-D%C3%ADaz-Ordaz-International-Airport-Mexico-Year-Round
+MEX, https://weatherspark.com/y/145808/Average-Weather-at-Benito-Ju%C3%A1rez-International-Airport-Mexico-Year-Round
+MTY, https://weatherspark.com/y/145781/Average-Weather-at-General-Mariano-Escobedo-International-Airport-Mexico-Year-Round
+CUN, https://weatherspark.com/y/146538/Average-Weather-at-Canc%C3%BAn-International-Airport-Mexico-Year-Round
+
+Mexico, https://weatherspark.com/y/5674/Average-Weather-in-Mexico-City-Mexico-Year-Round
+Guadalajara
+Mexico, Puebla, PBC, https://weatherspark.com/h/y/145840/2021/Historical-Weather-during-2021-at-Hermanos-Serd%C3%A1n-International-Airport-Mexico#Figures-Temperature
+Mexico, Puerto Vallarta, PVR, https://weatherspark.com/h/y/145643/2021/Historical-Weather-during-2021-at-Licenciado-Gustavo-D%C3%ADaz-Ordaz-International-Airport-Mexico
+Paramaribo, Suriname, PBM, https://weatherspark.com/h/y/147549/2021/Historical-Weather-during-2021-at-Johan-Adolf-Pengel-International-Airport-Suriname
+
+COR, https://weatherspark.com/y/147419/Average-Weather-at-Pajas-Blancas-Airport-Argentina-Year-Round
+ROS, https://weatherspark.com/y/147488/Average-Weather-at-Rosario-International-Airport-Argentina-Year-Round
+SLA, https://weatherspark.com/y/147406/Average-Weather-at-Mart%C3%ADn-Miguel-de-G%C3%BCemes-International-Airport-Argentina-Year-Round
+
+Barbados, https://weatherspark.com/y/150201/Average-Weather-in-Barbados-Year-Round, constant year-round.
+Uruguay, https://weatherspark.com/countries/UY
+
+Canada, https://weatherspark.com/countries/CA
+YUL, https://weatherspark.com/y/147207/Average-Weather-at-Montr%C3%A9al-Pierre-Elliott-Trudeau-International-Airport-Canada-Year-Round
+
+Puerto Rico, https://weatherspark.com/y/150269/Average-Weather-in-Puerto-Rico-Year-Round
+POS, https://weatherspark.com/y/147472/Average-Weather-at-Piarco-International-Airport-Trinidad-&-Tobago-Year-Round
+SAL, https://weatherspark.com/y/146381/Average-Weather-at-Aeropuerto-Internacional-El-Salvador-El-Salvador-Year-Round

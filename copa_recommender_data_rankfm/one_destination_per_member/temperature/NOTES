@@ -1,0 +1,20 @@
+July 2, 2022
+
+cd temperatures_airports
+
+python read_files.py 
+cp some_airport_tempratures.csv ../airports.csv
+cd ..
+cd temperatures_countries
+
+python read_files.py 
+cp temperatures_countries.csv ../countries.csv
+cd ../
+
+python combine_airports_countries.py
+# Generate file:  "airport_temperatures.csv"
+
+python massage_D_temperatures.py 
+# Generate file: "temp_massaged.csv"
+
+
