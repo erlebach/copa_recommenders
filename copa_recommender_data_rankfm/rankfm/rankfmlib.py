@@ -9,6 +9,8 @@ from rankfm.rankfm import RankFM
 from rankfm.evaluation import hit_rate, reciprocal_rank, discounted_cumulative_gain, precision, recall, diversity
 import function_lib as flib
 
+#------------------------------------------------------------------------------------------
+
 def read_data(year_train, year_valid):
     """
     year_train (int)
@@ -35,7 +37,7 @@ def read_data(year_train, year_valid):
         df[year]['year'] = year
 
     return df
-#----------------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------------
 def read_data_attributes(year, year_train, year_valid):
     """
     year_train (int)

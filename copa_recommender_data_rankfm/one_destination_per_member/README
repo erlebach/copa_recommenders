@@ -5,3 +5,15 @@ Users are member IDs.
 Items are destinations, a form of implicit feedback. 
 In a single year, each passenger only flies to a destination once.
 
+-----------------------------------------------------------------------------
+2022-07-15
+New notebook: rankfm_hitrates_single_function.ipynb
+Using high-level function in rankfmlib.calculate_dct_with_attributes()  
+and rankfmlib.topn_recommendations_with_attributes(), compute hit rates. 
+
+calculate_dct_with_attributes() invokes read_data_attributes() to read the file
+attrib_{year}.csv, with the following columns: 
+
+MEMBER_ID,TRUE_OD,D,FLIGHT_DATE,BOOKING_DATE,TICKET_SALES_DATE,TICKET_NUMBER,TRUE_ORIGIN_COUNTRY,ADDR_COUNTRY,PNR,PARTY_SZ,size,booking_date,booking_dowk,booking_mo,flight_date,flight_dowk,flight_mo,TIER_LEVEL,GENDER,BIRTH_DATE,age_at_flight,year  (the data is not one-hot encoded). 
+
+-----------------------------------------------------------------------------

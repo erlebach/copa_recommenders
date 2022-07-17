@@ -72,3 +72,9 @@ Read output from analyze_PNR.ipynb and create attributes.
 Write result to file activity_reduced_with_attributes.csv
 
 ============================================================
+
+Folder: create_dataset/
+Starting from data provided by Copa, analyze, and output attributes. 
+See README file for more details. 
+
+============================================================
