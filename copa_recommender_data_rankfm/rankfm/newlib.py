@@ -11,7 +11,7 @@ import function_lib as flib
 import rankfmlib as fmlib
 
 #----------------------------------------------------------------------------------------
-def read_data_attributes_single_file(in_file, age_cuts=None): #, year_train, year_valid)
+def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=False): #, year_train, year_valid)
     """
     in_file (string)
         File containing all records with member and destination attributes. Note that there is 
@@ -19,6 +19,9 @@ def read_data_attributes_single_file(in_file, age_cuts=None): #, year_train, yea
 
     age_cuts : list
         Defines the break between different member age categories.
+
+    overwrite_cache: Bool [False]
+        If True, overwrite the cache even if present
 
     Return
     ------
@@ -32,18 +35,36 @@ def read_data_attributes_single_file(in_file, age_cuts=None): #, year_train, yea
     df (DataFrame)
        u Dictionary with a minimum of four columns (userID (member), itemID (Destination), rating, year))
         The year column is the year of booking
+
+    Notes
+    -----
+    - On exit, the data is ordered by flight-departure time
+    - The raw data read in is cached in memory (alternatively, stored in binary format) for faster retrieval. 
+    - I do not remove duplicate MEMBER_ID/D pairs at this stage.  This is only done for the training/validation/testsing files.
     """
 
-    #df = {}
-    #df_members = {}
-    #df_user_attrib = {}
+    # The leading underscores indicates a private variable by convention
+    # Create a dictionary that persists across function invocations
+    if not hasattr(read_data_attributes_single_file, '_dct'):
+        read_data_attributes_single_file._dct = {'raw_data' : None }
+    _dct = read_data_attributes_single_file._dct
+
+    if overwrite_cache:
+        read_data_attributes_single_file_dct['raw_data'] = None
 
     interact_dct = {}
 
     if age_cuts == None:
         age_cuts = [0, 30, 50, 70, 120]
 
-    assert age_cuts[-1] > 120, "maximum age must be great or equal than 120"
+    # Ensure that the last value of age_cuts is >= 120 to capture all age groups
+    if age_cuts[-1] < 100:
+        age_cuts.append(120)
+
+    if age_cuts[-1] < 120:
+        age_cuts[-1] = 120
+
+    # User and item attributes are across entire dataset. They are restricted to the training set at a later stage.
 
     # age_at_flight changes for different flights, but we ignore this over a 5-year period
     cols_user_attrib = ['MEMBER_ID','TRUE_ORIGIN_COUNTRY','ADDR_COUNTRY','age_departure']
@@ -51,12 +72,23 @@ def read_data_attributes_single_file(in_file, age_cuts=None): #, year_train, yea
     cols_user_attrib = ['MEMBER_ID','age_departure']
 
     attrib_file = in_file
-    df_ = pd.read_csv(attrib_file)
-    print(df_.columns, df_.shape)
-    # Each member/ID pair should have only a single flight (no not take temporal data into account)
-    df_ = df_.drop_duplicates(['MEMBER_ID','D'])  # already dropped, but let us make sure.
+    if isinstance(_dct['raw_data'], pd.DataFrame):
+        df_ = _dct['raw_data']
+    else:
+        df_ = pd.read_csv(attrib_file)
+        # Sort data according to flight date
+        df_ = df_.sort_values("FLIGHT_DATE")
+        _dct['raw_data'] = df_
 
-    # Bin passenger ages
+
+    # Each member/ID pair should have only a single flight (no not take temporal data into account)
+
+    # This drop_duplicates should not be done at this point, otherwise, I will never be able to predict
+    # a destination in the validation set that was present in the original set for a particular member .
+    # This explains why I get worse results when I do not filter out previous flights. 
+    # df_ = df_.drop_duplicates(['MEMBER_ID','D'])  # already dropped, but let us make sure. <<<< NOT HERE
+
+    # Create categories for member ages
     df_['age_departure'] = pd.cut(df_.age_at_flight, bins=age_cuts)
     df_members = df_[['MEMBER_ID', 'D']]
 
@@ -80,8 +112,6 @@ def read_data_attributes_single_file(in_file, age_cuts=None): #, year_train, yea
     df_item_attr = df1.copy()
     # TODO: Work with temperatures
 
-    #print("return from read_data_attributes_single_file")
-    #return df_members, df_user_attrib, df_item_attr
     interact_dct['df_members'] = df_members
     interact_dct['df_user_attr'] = df_user_attrib
     interact_dct['df_item_attr'] = df_item_attr
@@ -250,20 +280,29 @@ def topn_recommendations_with_attributes(model, interactions_dct, user_attribute
     #print("model recall: {}".format(round(model_rec, 3)))
 
 #----------------------------------------------------------------------------------------
-def train_valid_dct(dct, train_perc, valid_perc, shuffle=True):
+def train_valid_dct(dct, train_perc, valid_perc, temporal=False, shuffle=True):
+    """
+    - Split a dataframe into train, validation, testing sets. 
+    - Use the dictionary 'dct' to pass information. 
+    - There is no return function. 
+    - The DataFrame 'df_members' is assumed to be ordered accordng to 'FLIGHT_DATE' timestamp. 
+    - See function 'train_valid' for more detail. 
+    """
     df_members = dct['df_members']
+    print(df_members.shape)
+
     dftrain, dfvalid, dftest = train_valid(df_members, train_perc, valid_perc, shuffle=shuffle)
     dct['data_train'] = dftrain
     dct['data_valid'] = dfvalid
     dct['data_test']  = dftest
 
-def train_valid(x, train_perc, valid_perc, shuffle=True):
+def train_valid(x, train_perc, valid_perc, temporal=False, shuffle=True):
     """
-    Split a dataframe into train, validation, testing setes
+    Split a dataframe into train, validation, testing sets
 
     Parameters
     ----------
-    x : pandas DataFrame
+    x : pandas DataFrame, assumed ordered by flight date
 
     train_perc, valid_perc: float
         percent of training data [0,1]
@@ -272,8 +311,17 @@ def train_valid(x, train_perc, valid_perc, shuffle=True):
     shuffle:  [True]
         whether to shuffle the data or not, without replacement
 
+    temporal: [True]
+        If True, flights in the validation set take place after flights in the training set. 
+        IF False, flights are randomized
+
     Notes:
-        The first two arguments must satisfy the constraint: (train_perc + valid_perc < 1)
+        - The first two arguments must satisfy the constraint: (train_perc + valid_perc < 1). 
+        - The temporal argument suggests I must know the departure times of all flights, and this must be passed in. 
+        - This suggests the use of a characteristic timestamp. It also suggests that the division between training/validation/testing
+          datesets must occur earlier in the pipeline. Perhaps I should read the data in temporally increasing order, and shuffle
+          only this this method. 
+
 
     Return
     ------
@@ -281,16 +329,46 @@ def train_valid(x, train_perc, valid_perc, shuffle=True):
 
     """
 
+    if not temporal and shuffle:
+        x = x.sample(frac=1)
+
     nb_el = len(x)
-    test_perc = 1. - valid_perc - train_perc;
-    perc_valid = valid_perc; n_valid = int(nb_el * perc_valid)
-    perc_test = (1.-valid_perc-train_perc); n_test =int(nb_el * perc_test)
+
     perc_train = train_perc
+    perc_valid = valid_perc; 
+    perc_test = (1.-valid_perc-train_perc); 
+
+    n_train = int(nb_el * perc_train)
+    n_valid = int(nb_el * perc_valid)
+    n_test  = int(nb_el * perc_test)
+
+    """
+    print("n_train: ", n_train)
+    print("n_valid: ", n_valid)
+    print("n_test: ", n_test)
+    """
+
+    x_train = x.iloc[0:n_train]
+    x_valid = x.iloc[n_train:n_train+n_valid]
+    x_test  = x.iloc[n_train+n_valid:]
+
     if shuffle:
-        y = x.sample(frac=1)
-    x_valid = y.iloc[0:n_valid]
-    x_test = y.iloc[n_valid:n_valid+n_test]
-    x_train = y.iloc[n_valid+n_test:]
+        x_train = x_train.sample(frac=1)
+        x_valid = x_valid.sample(frac=1)
+        x_test  = x_test.sample(frac=1)
+
+
+    # Ensure that each Member/Destination pair occurs only once
+    x_train = x_train.drop_duplicates(['MEMBER_ID','D'])
+    x_valid = x_valid.drop_duplicates(['MEMBER_ID','D'])
+    x_test  = x_test.drop_duplicates(['MEMBER_ID','D'])
+
+    """
+    print("train_valid")
+    print("========> x_train: \n", x_train)
+    print("========> x_valid: \n", x_valid)
+    print("========> x_test: \n", x_test)
+    """
     return x_train, x_valid, x_test
 
 #-------------------------------------------------------------------------------------------
@@ -304,22 +382,166 @@ def restrict_member_attrib(interactions_dct):
     user_attrib: DataFrame
         The unique members match the unique members of data_train, a rewquirement of rankfm. 
     """
-    print(interactions_dct.keys())
     data_train = interactions_dct['data_train']
     user_attrib = interactions_dct['df_user_attr']
     user_attrib = user_attrib[user_attrib['MEMBER_ID'].isin(data_train.MEMBER_ID)]
     return user_attrib
 
 #----------------------------------------------------------------------------------------------
-def run_model(model, interaction_dct, topn=3, verbose=False, nb_epochs=30):
+def run_model(model, interaction_dct, topN=3, verbose=False, nb_epochs=30, with_attrib=True):
     user_attrib = restrict_member_attrib(interaction_dct)
     data_train = interaction_dct['data_train']
     data_valid = interaction_dct['data_valid']
-#     len(set(user_attrib.MEMBER_ID)), len(set(data_valid.MEMBER_ID)), len(set(data_train.MEMBER_ID))
-    model.fit(data_train, user_features=user_attrib, sample_weight=None, epochs=nb_epochs, verbose=verbose)
-    hr_filtered = hit_rate(model, data_valid, k=topn, filter_previous=True)
-    hr_not_filtered = hit_rate(model, data_valid, k=topn, filter_previous=False)
+
+    if with_attrib == True:
+        model.fit(data_train, user_features=user_attrib, sample_weight=None, epochs=nb_epochs, verbose=verbose)
+    else:
+        model.fit(data_train, sample_weight=None, epochs=nb_epochs, verbose=verbose)
+
+    hr_filtered = hit_rate(model, data_valid, k=topN, filter_previous=True)
+    hr_not_filtered = hit_rate(model, data_valid, k=topN, filter_previous=False)
     print("hr (previous filtered): ", hr_filtered)
     print("hr (previous not filtered): ", hr_not_filtered)
 
 #----------------------------------------------------------------------------------------------------
+def recommender(model, interaction_dct, topN=5, keep_nb_members=None):
+    """
+    Arguments: 
+    ---------
+    model
+    interactions_dct: dictionary
+    topN: [5]
+        number of elements to keep
+    keep_members: [None]
+        number of members to consider in validation
+
+    Return
+    ------
+    pair: list of pairs (MEMBER_ID, D) used to validate
+
+    """
+    user_attrib = restrict_member_attrib(interaction_dct)
+    data_train = interaction_dct['data_train']
+    data_valid = interaction_dct['data_valid']
+    all_data = interaction_dct['df_members']
+    all_dest= np.asarray(sorted(list(all_data.D.unique())))
+
+    train_dest_sets = data_train.groupby('MEMBER_ID').agg({'D':set})
+    valid_dest_sets = data_valid.groupby('MEMBER_ID').agg({'D':set})
+    interaction_dct['train_dest_sets'] = train_dest_sets
+    interaction_dct['valid_dest_sets'] = valid_dest_sets
+
+    # For each member in the validation set, estimate the scores for all destinations. 
+    members = data_valid.MEMBER_ID.unique()  # ndarray of members
+
+    # Access MEMBER_ID via index or column
+    valid_dest_sets['MEMBER_ID'] = valid_dest_sets.index
+    train_dest_sets['MEMBER_ID'] = train_dest_sets.index
+
+    # Keep a small number of members
+
+    if keep_nb_members != None:
+        members = members[0:keep_nb_members]
+
+    pairs = []
+    for i, member in enumerate(members):
+        for dest in all_dest:
+            pairs.append((member, dest))
+
+    pairs = pd.DataFrame(pairs, columns=['MEMBER_ID','D'])
+    # pred will be of smaller size than pairs if cold_start is 'drop'
+    pred = model.predict(pairs, cold_start='nan')
+    pairs['pred'] = pred
+
+    #-------------------
+
+    res1 = pairs.groupby('MEMBER_ID').agg({'D':list, 'pred':list})
+
+    res1['argsort'] = res1['pred'].apply(lambda x: np.argsort(x)[::-1])
+
+    def extract_topN(res1, topn):
+        def argsortcolD(row):
+            return np.array(row['D'])[row['argsort'][0:topn]]
+
+        def argsortcolPred(row):
+            return np.array(row['pred'])[row['argsort'][0:topn]]
+
+        res1['D1'] = res1.apply(argsortcolD, axis=1)
+        res1['pred1'] = res1.apply(argsortcolPred, axis=1)
+        res2 = res1.drop(['D','pred', 'argsort'], axis=1)  # lists or ndarray:w
+        return res2
+
+    res2 = extract_topN(res1, topn=topN)
+
+    # res2 has columns 'D1' and 'pred1': 
+    # 'D1' predicted destinations
+    # 'scores' predicted scores in ranked drder
+
+#  First issue: even when running 500 epochs, the scores are a mixture of neg and positive. WHY? 
+#  I wonder if this is true with the training data? 
+
+    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
+    # flights actually flown in the validation set. 
+    # Keep all recommended flights even if found in th e # training set. 
+
+
+    # Do not filter out hits in the training set
+    hits = 0
+    for member in members: 
+        set_valid = valid_dest_sets.loc[member]
+        valid_dests = set_valid['D']  # set
+        ranked_dests = res2.loc[member, 'D1']  # ndarray
+        # Recall that above, I kept topN+2 ranked elements for the non-filtered case
+        if valid_dests.intersection(ranked_dests):
+            hits += 1
+
+    print("hit rate (without previous filter) = ", hits/len(members))
+
+    # Filter out hits in the training set
+    # Inefficient implementation
+    # Calculate the number of this when filtered
+    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
+    # flights actually flown in the validation set. 
+    # Remove from the recommended flights, any flights found in the training set. 
+
+    res2 = extract_topN(res1, topn=8*topN)
+    #print("res2: ", res2)
+
+    hits = 0
+    nb_members = len(members)
+    for member in members:
+        # print("member: ", member)
+        try:
+            td = train_dest_sets.loc[member]  # train destinations (set)
+        except:
+            nb_members -= 1
+            continue
+        set_valid = valid_dest_sets.loc[member]
+        vd = set_valid['D']    # validation destinations (set)
+        rp = res2.loc[member, 'D1'] # ranked prediction (ndarray)
+        rk = []
+        for d in rp:
+            if d in td['D']: 
+                continue
+            rk.append(d)
+            if len(rk) == topN:
+                break
+
+        if len(rk) != topN:
+            print("len(rk): ", len(rk))
+        if len(rk) < 5:
+            print("==> member: ", member)
+            print("    vd = ", vd, "    (validation dest)")
+            print("    td= ", td.values, "  (training dest)")
+            print("    rk= ", rk[0:10], "   (ranked dest)")
+            print("    rp= ", rp, "    (trimmed ranked dest)")
+            print("    len(vd): ", len(vd), "   , len(td): ", len(td))     
+        if vd.intersection(rk):
+            hits += 1
+
+    # Identical to the hit rate built into rankfm! That is great!
+    print("hit rate (with previous filter) = ", hits/nb_members)
+
+
+    return pairs
+#---------------------------------------------------------------------------------------------------

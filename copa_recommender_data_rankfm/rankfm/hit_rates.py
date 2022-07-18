@@ -216,6 +216,7 @@ def evaluate_hit_rate(model, year1, year2, nb_epochs=30, keep_nb_users=None, fil
         print("There are no test users")
         return
 
+    """
     # #### Generate Pure-Popularity Baselines
     # This allows the popular flights to also occur in the training data.
     most_popular = interactions_train.groupby('product_id')['user_id'].count().sort_values(ascending=False)[:k]
@@ -227,6 +228,7 @@ def evaluate_hit_rate(model, year1, year2, nb_epochs=30, keep_nb_users=None, fil
     results['base_hrt'] = base_hrt
     results['base_pre'] = base_pre
     results['base_rec'] = base_rec
+    """
 
     """
     print("\nPure-Popularity Baselines")
@@ -242,6 +244,7 @@ def evaluate_hit_rate(model, year1, year2, nb_epochs=30, keep_nb_users=None, fil
 
     # #### Generate Model Performance Validation Metrics
 
+    """
     #model_hrt = hit_rate(model, interactions_valid, k=k, filter_previous=filter_previous)
     model_rnk = reciprocal_rank(model, interactions_valid, k=k, filter_previous=filter_previous)
     model_pre = precision(model, interactions_valid, k=k, filter_previous=filter_previous)
@@ -250,6 +253,7 @@ def evaluate_hit_rate(model, year1, year2, nb_epochs=30, keep_nb_users=None, fil
     results['model_rnk'] = model_rnk
     results['model_pre'] = model_pre
     results['model_rec'] = model_rec
+    """
 
     """
     print("\nModel Performance Validation Metrics")

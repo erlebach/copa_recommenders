@@ -26,7 +26,7 @@ Produce the file: "members_d.csv" with columns: MEMBER_ID, D, FLIGHT_DATE, famil
     * This was identified by equating the destination of TRUE_OD and the destination of SEGMENT_OD
     * I only keep flights where the country of origin corresponds to the country of the country of the origin
 
-# Remove flights within country:  shape oes from 990144 => 910561
+# Remove flights within country:  shape goes from 990144 => 910561
 
 # Analyze membership, families, etc
 * There is already a 1-1 correspondance between PNR and member ids
