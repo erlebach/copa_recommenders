@@ -529,7 +529,7 @@ def recommender(model, interaction_dct, topN=5, keep_nb_members=None):
 
         if len(rk) != topN:
             print("len(rk): ", len(rk))
-        if len(rk) < 5:
+        if len(rk) < topN:
             print("==> member: ", member)
             print("    vd = ", vd, "    (validation dest)")
             print("    td= ", td.values, "  (training dest)")
@@ -538,6 +538,8 @@ def recommender(model, interaction_dct, topN=5, keep_nb_members=None):
             print("    len(vd): ", len(vd), "   , len(td): ", len(td))     
         if vd.intersection(rk):
             hits += 1
+
+    # I should also print how many correct out of the number of actual trips. TO DO.  MYHouse 
 
     # Identical to the hit rate built into rankfm! That is great!
     print("hit rate (with previous filter) = ", hits/nb_members)
