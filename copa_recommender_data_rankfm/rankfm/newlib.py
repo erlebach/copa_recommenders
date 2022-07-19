@@ -11,7 +11,7 @@ import function_lib as flib
 import rankfmlib as fmlib
 
 #----------------------------------------------------------------------------------------
-def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=False): #, year_train, year_valid)
+def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=False, dct=None): #, year_train, year_valid)
     """
     in_file (string)
         File containing all records with member and destination attributes. Note that there is 
@@ -52,7 +52,6 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     if overwrite_cache:
         read_data_attributes_single_file_dct['raw_data'] = None
 
-    interact_dct = {}
 
     if age_cuts == None:
         age_cuts = [0, 30, 50, 70, 120]
@@ -111,6 +110,11 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     df1['avg_yr_h'] = df1.avg_yr_h / 100.
     df_item_attr = df1.copy()
     # TODO: Work with temperatures
+
+    if dct:
+        interact_dct = dct
+    else:
+        interact_dct = {}
 
     interact_dct['df_members'] = df_members
     interact_dct['df_user_attr'] = df_user_attrib
@@ -402,6 +406,7 @@ def run_model(model, interaction_dct, topN=3, verbose=False, nb_epochs=30, with_
     hr_not_filtered = hit_rate(model, data_valid, k=topN, filter_previous=False)
     print("hr (previous filtered): ", hr_filtered)
     print("hr (previous not filtered): ", hr_not_filtered)
+    return hr_not_filtered, hr_filtered
 
 #----------------------------------------------------------------------------------------------------
 def recommender(model, interaction_dct, topN=5, keep_nb_members=None):
@@ -495,7 +500,8 @@ def recommender(model, interaction_dct, topN=5, keep_nb_members=None):
         if valid_dests.intersection(ranked_dests):
             hits += 1
 
-    print("hit rate (without previous filter) = ", hits/len(members))
+    hr_notfiltered = hits/len(members)
+    print("hit rate (without previous filter) = ", hr_notfiltered)
 
     # Filter out hits in the training set
     # Inefficient implementation
@@ -542,8 +548,9 @@ def recommender(model, interaction_dct, topN=5, keep_nb_members=None):
     # I should also print how many correct out of the number of actual trips. TO DO.  MYHouse 
 
     # Identical to the hit rate built into rankfm! That is great!
-    print("hit rate (with previous filter) = ", hits/nb_members)
+    hr_filtered = hits/nb_members
+    print("hit rate (with previous filter) = ", hr_filtered)
 
 
-    return pairs
+    return pairs, hr_notfiltered, hr_filtered
 #---------------------------------------------------------------------------------------------------
