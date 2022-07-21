@@ -11,7 +11,113 @@ import function_lib as flib
 import rankfmlib as fmlib
 
 #----------------------------------------------------------------------------------------
-def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=False, dct=None): #, year_train, year_valid)
+class Rankfm:
+    """
+    Collect useful routines, and create a dictionary with parameter for every run
+    Keys for dct: otpN, keep_nb_members, age_cuts, 
+    offset_perc (?), train_perc, valid_perc, temporal
+    factors, loss, alpha, beta, learning_rate, learning_schedule
+    """
+    def __init__(self, dct_new, infile, seed=None):
+        """
+        dct_new: overwrite default dictionary parameters
+        """
+        # Ensure reproducibility
+        if seed != None:
+            np.random.seed(seed)
+
+        dct = {}
+            
+        # dct: dictionary of model parameters and results
+        dct['train_offset'] = 0.0
+        dct['train_perc'] = 0.3
+        dct['valid_perc'] = 0.3
+        dct['nb_epochs'] = 100
+        dct['with_attrib'] = True
+        dct['factors'] = 20   # embedding size
+        dct['loss'] = 'bpr'
+        dct['max_samples'] = 300 # not used
+        dct['alpha'] = 0.05
+        dct['beta'] = 0.1
+        dct['learning_rate'] = 0.1
+        dct['learning_schedule'] = 'constant'
+        # if None, keep all members
+        dct['keep_nb_members'] = None
+        dct['temporal'] = True
+        dct['age_cuts'] = [0,30,60,70,150]
+        dct['topN'] = 5
+
+        self.df = pd.DataFrame()
+        self.dct = dct
+        self.update_dict(dct_new)
+        
+        # items to remove from dictionary prior to updating the class dataframe
+        self.cols_toremove = ['df_members','df_user_attr','df_item_attr','data_train','data_valid','data_test','model']
+
+
+    def read_data(self, dct_update={}, continuous_attr=False):
+        self.dct['continuous_attr'] = continuous_attr
+        if dct_update:
+            self.update_dict(dct_update)
+
+        age_cuts = self.dct['age_cuts']
+        self.dct = read_data_attributes_single_file("activity_reduced_with_attributes.csv",
+                        age_cuts=age_cuts, dct=self.dct, overwrite_cache=False, continuous_attr=continuous_attr)
+    
+    def update_storage(self):
+        # Append dictionary into the class dataframe
+        dct_copy = self.dct.copy()
+        try:
+            for col in self.cols_toremove:
+                dct_copy.pop(col)
+        except Exception as err:
+            # At least one item cannot be popped
+            print("self.dct: ", self.dct.keys())
+            print("dct_copy: ", dct_copy.keys())
+            print("dct_copy: ", dct_copy.values())
+            print("Exception error: \n", err)
+            print("===========================================================")
+
+        dct_copy['age_cuts'] = dct_copy['age_cuts']
+        self.df = pd.concat([self.df, pd.DataFrame(dct_copy, index=[0])])
+        
+    def save(self, out_file):
+        self.df.to_csv(out_file, index=0)
+    
+    def train_valid(self):
+        dct = self.dct
+        train_valid_dct(dct, train_perc=dct['train_perc'], 
+                                    valid_perc=dct['valid_perc'], 
+                                    temporal=dct['temporal'])
+    
+    def update_dict(self, dct_update):
+        for k,v in dct_update.items():
+            self.dct[k] = v
+            
+    def create_model(self):
+        dct = self.dct
+        dct['model'] = RankFM(factors=dct['factors'], loss=dct['loss'], 
+                max_samples=dct['max_samples'], alpha=dct['alpha'], beta=dct['beta'], 
+                learning_rate=dct['learning_rate'], 
+                learning_schedule=dct['learning_schedule'])
+        
+    def run_model(self, with_attrib=True):
+        dct = self.dct
+        hr_notfiltered, hr_filtered = run_model(dct['model'], dct, nb_epochs=dct['nb_epochs'], 
+                 topN=dct['topN'], with_attrib=dct['with_attrib'])
+        self.dct['hr_run_notfiltered'] = hr_notfiltered
+        self.dct['hr_run_filtered'] = hr_filtered
+#         print("run_model, dct= ", dct)
+    
+    def recommender(self):
+        dct = self.dct
+        pairs, hr_notfiltered, hr_filtered = recommender(dct['model'], dct, keep_nb_members=dct['keep_nb_members'], topN=dct['topN'])
+        self.dct['hr_rec_notfiltered'] = hr_notfiltered
+        self.dct['hr_rec_filtered'] = hr_filtered
+        print("recommend, dct= ", dct)
+    
+#----------------------------------------------------------------------------------------
+def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=False, dct=None, continuous_attr=False): #, year_train, year_valid)
     """
     in_file (string)
         File containing all records with member and destination attributes. Note that there is 
@@ -22,6 +128,9 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
 
     overwrite_cache: Bool [False]
         If True, overwrite the cache even if present
+
+    continuous_attr: Bool [False]
+        If True: temperature, long/lat/altitude are continuous variables
 
     Return
     ------
@@ -42,6 +151,11 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     - The raw data read in is cached in memory (alternatively, stored in binary format) for faster retrieval. 
     - I do not remove duplicate MEMBER_ID/D pairs at this stage.  This is only done for the training/validation/testsing files.
     """
+
+    if dct:
+        interact_dct = dct
+    else:
+        interact_dct = {}
 
     # The leading underscores indicates a private variable by convention
     # Create a dictionary that persists across function invocations
@@ -68,7 +182,7 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     # age_at_flight changes for different flights, but we ignore this over a 5-year period
     cols_user_attrib = ['MEMBER_ID','TRUE_ORIGIN_COUNTRY','ADDR_COUNTRY','age_departure']
     # This should be an argument to the function
-    cols_user_attrib = ['MEMBER_ID','age_departure']
+    cols_user_attrib = ['MEMBER_ID','age_departure','GENDER']
 
     attrib_file = in_file
     if isinstance(_dct['raw_data'], pd.DataFrame):
@@ -94,35 +208,87 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     df_user_attrib = df_[cols_user_attrib].drop_duplicates('MEMBER_ID')
 
     # One-Hot encode the categorical attributes
-    df_user_attrib = pd.get_dummies(df_user_attrib, prefix=['age_dep'], columns=['age_departure'])
+    df_user_attrib = pd.get_dummies(df_user_attrib, prefix=['age_dep','gender'], columns=['age_departure','GENDER'])
 
     # Age at flight is not really good. Actual age would be better. But that depends on frame of reference. 
     # So perhaps young, middle, old, would be better. Eg. [0-30], [30-60], [60+]? TODO. 
     member_attr_cols = ['MEMBER_ID', 'GENDER', 'age_at_flight', 'NATIONALITY', 'ADDR_COUNTRY'] 
     member_categ_attr_df = df_[member_attr_cols]
 
+    #------------------------------------------------------------
     # Read item/Destination attributes
-    df1 = pd.read_csv("temp_massaged.csv")
+    #df1 = pd.read_csv("temp_massaged.csv")
+    df1 = pd.read_csv("temp_long_lat_height.csv")
     # Initial experimentation: with min/max avg temperatures during the year
     df1 = df1.drop(["avg_wi", "avg_sp", "avg_su", "avg_fa"], axis=1)
+
+    # Tranform temperatures into cateogical variables
+    # Try to have the same number in each category? But that might not lead to 
+    # relevant categories. 
+
     # Attributes will be considered as scalars. Divide by 100 for normalization
+    # Normalize the continuous variables to (hopefully) improve inference.
     df1['avg_yr_l'] = df1.avg_yr_l / 100.
     df1['avg_yr_h'] = df1.avg_yr_h / 100.
-    df_item_attr = df1.copy()
-    # TODO: Work with temperatures
+    df1['LON_DEC']  = df1.LON_DEC / 100.
+    df1['LAT_DEC']  = df1.LAT_DEC / 100.
+    df1['HEIGHT']   = df1.HEIGHT / df1.HEIGHT.max()
 
-    if dct:
-        interact_dct = dct
+    if not continuous_attr:
+        yr_l_cuts = [-20,40,60,80,120]
+        yr_h_cuts = [-20,40,60,80,120]
+        df1['avg_yr_l'] = pd.cut(df1.avg_yr_l, bins=yr_l_cuts)
+        df1['avg_yr_h'] = pd.cut(df1.avg_yr_h, bins=yr_h_cuts)
+
+    #print(df1.avg_yr_l.dtype) # category
+    #print("df1 avg_yr_h: ", df1[['avg_yr_h', 'avg_yr_hh']])
+    #print("df1 avg_yr_l: ", df1.avg_yr_l)
+
+    # long goes from -1.3 to 0
+    # lat goes from -0.34 to 0.46
+    #print("long min/max: ", df1['LON_DEC'].min(), df1['LON_DEC'].max())
+    #print("lat min/max: ", df1['LAT_DEC'].min(), df1['LAT_DEC'].max())
+
+
+    if not continuous_attr:
+        altitude_cuts = [0,1000,2000,3000]
+        long_cuts = [-1.3, -1., -.7, -.4, 0.]
+        lat_cuts = [-0.30, -0.15, 0., 0.15, 0.30, 0.45]
+        df1['HEIGHT']  = pd.cut(df1.HEIGHT,  bins=altitude_cuts)
+        df1['LON_DEC'] = pd.cut(df1.LON_DEC, bins=long_cuts)
+        df1['LAT_DEC'] = pd.cut(df1.LAT_DEC, bins=lat_cuts)
+
+    interact_dct['age_cuts']      = str(age_cuts)
+
+    if continuous_attr:
+        df_item_attr = df1.copy()
+        df_item_attrib = df_item_attr
     else:
-        interact_dct = {}
+        interact_dct['long_cuts']     = str(long_cuts)
+        interact_dct['lat_cuts']      = str(lat_cuts)
+        interact_dct['yr_l_cuts']     = str(yr_l_cuts)
+        interact_dct['yr_h_cuts']     = str(yr_h_cuts)
+        interact_dct['altitude_cuts'] = str(altitude_cuts)
 
-    interact_dct['df_members'] = df_members
+        df_item_attr = df1.copy()
+        df_item_attrib = pd.get_dummies(df_item_attr, 
+            prefix=['yr_l','yr_h','lon','lat','alt'], 
+            columns=['avg_yr_l','avg_yr_h','LON_DEC','LAT_DEC','HEIGHT'])
+
+    #print(df_item_attrib.columns)
+    #print(df_item_attrib.head(5))
+    #print("====")
+    #display(df_item_attrib.head(1).transpose())
+
+    # CREATE USER ATTRIBUTES
+
+    interact_dct['df_members']   = df_members
     interact_dct['df_user_attr'] = df_user_attrib
     interact_dct['df_item_attr'] = df_item_attr
     return interact_dct
 
 #-------------------------------------------------------------------------------------
-def calculate_dct_with_attributes(model, nb_samples=10000, with_attrib=False, verbose=False, nb_epochs=30, loss='warp'):
+def calculate_dct_with_attributes(model, nb_samples=10000, with_attrib=False, verbose=False, nb_epochs=30, loss='warp', seed=None):
     """
     Self-contained function: reads the data and calculates a hit rate
     
@@ -147,6 +313,11 @@ def calculate_dct_with_attributes(model, nb_samples=10000, with_attrib=False, ve
         Contains useful data, keyed for easy retrieval
     """
 
+    # shuffle the users reproducibly
+    if seed != None:
+        np.random.seed(seed)
+
+
     # Read data with attributes
     in_file = "activity_reduced_with_attributes.csv"
     member_dest_df, df_user_attrib, df_item_attrib = read_data_attributes_single_file(in_file)
@@ -167,8 +338,6 @@ def calculate_dct_with_attributes(model, nb_samples=10000, with_attrib=False, ve
         nb_samples = max_nb_users # number beyond the maximum 
     keep_nb_users = nb_samples
 
-    # shuffle the users
-    np.random.seed(1492)
     s_users = np.random.choice(all_users, size=keep_nb_users, replace=False)
 
     # Filter users in df_item_onebot. Only keep users with ids in s_users
