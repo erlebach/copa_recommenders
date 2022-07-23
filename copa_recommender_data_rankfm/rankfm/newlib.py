@@ -8,7 +8,7 @@ import pandas_options
 from rankfm.rankfm import RankFM
 from rankfm.evaluation import hit_rate, reciprocal_rank, discounted_cumulative_gain, precision, recall, diversity
 import function_lib as flib
-import rankfmlib as fmlib
+#import rankfmlib as fmlib
 
 #----------------------------------------------------------------------------------------
 class Rankfm:
@@ -285,6 +285,7 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     interact_dct['df_members']   = df_members
     interact_dct['df_user_attr'] = df_user_attrib
     interact_dct['df_item_attr'] = df_item_attr
+
     return interact_dct
 
 #-------------------------------------------------------------------------------------
@@ -464,7 +465,7 @@ def train_valid_dct(dct, train_perc, valid_perc, temporal=False, shuffle=True):
     df_members = dct['df_members']
     print(df_members.shape)
 
-    dftrain, dfvalid, dftest = train_valid(df_members, train_perc, valid_perc, shuffle=shuffle)
+    dftrain, dfvalid, dftest = train_valid(df_members, train_perc, valid_perc, shuffle=shuffle, temporal=temporal)
     dct['data_train'] = dftrain
     dct['data_valid'] = dfvalid
     dct['data_test']  = dftest

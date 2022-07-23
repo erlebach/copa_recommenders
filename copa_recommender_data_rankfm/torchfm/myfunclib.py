@@ -19,9 +19,9 @@ class myDataset(Dataset):
         filenm (string) : file to process
         nrows (int) : number of rows to process. All rows if None. 
     """
-    def __init__(self, filenm, nrows='all'):
+    def __init__(self, filenm, nrows=None):
         super(Dataset, self).__init__()
-        if nrows == 'all':
+        if nrows == None:
             df = pd.read_csv(filenm)
         else: 
             df = pd.read_csv(filenm, nrows=nrows)
@@ -54,7 +54,6 @@ class myDataset(Dataset):
         
         df = df[cols]
         df['age_at_flight'] = df.groupby('MEMBER_ID').transform('mean')
-        # print(df['age_at_flight'])         # <<<<<
         df['age'] = pd.cut(df.age_at_flight, bins=[0, 30, 50, 70, 120])
         df = df.drop('age_at_flight', axis=1)
         
@@ -82,21 +81,10 @@ class myDataset(Dataset):
         # Ideally, idx2member should return member and its attributes
         pair1 = df[['MEMBER_ID', 'member_id', 'age']]   # include attributes <<<<<<<<<<
         p1 = pair1.apply(tuple, axis=1).unique()
-        #print("p1: ", p1)
-        #print("gordon")
         self.member_dict = sorted(p1, key=lambda x: x[0]) # idx -> member
-        #print("fan")
-        #print(self.member_dict)
         self.member_dict = {item[0]:item[1:] for item in self.member_dict}
-        #print(self.member_dict)
-        #print("fan")
-        #self.member_dict = dict(sorted(p1, key=lambda x: x[0])) # idx -> member
-        #self.member_dict = dict(p1)
         self.idx2member = self.member_dict
-        #print("idx2member[0]: ", self.idx2member[0])
-        #print("idx2member.items(): ", self.idx2member.items())
         self.member2idx = {v[0] : (k,v[1:]) for k,v in self.idx2member.items()}
-        #print("self.member2idx: ", self.member2idx)
         
         # Generate negative samples. These will be destinations not chosen by the user, but chosen
         # by at least one other user. 
@@ -117,13 +105,13 @@ class myDataset(Dataset):
         
         dct = {}
         dct['member_attr'] = self.member_attr
-        dct['dest_attr'] = self.dest_attr
-        dct['field_dims'] = self.field_dims
-        dct['D_set'] = self.D_set
-        dct['dest2idx'] = self.dest2idx
-        dct['idx2dest'] = self.idx2dest
-        dct['member2idx'] = self.member2idx
-        dct['idx2member'] = self.idx2member
+        dct['dest_attr']   = self.dest_attr
+        dct['field_dims']  = self.field_dims
+        dct['D_set']       = self.D_set
+        dct['dest2idx']    = self.dest2idx
+        dct['idx2dest']    = self.idx2dest
+        dct['member2idx']  = self.member2idx
+        dct['idx2member']  = self.idx2member
         self.dct = dct
         
     def __getitem__(self, idx):
@@ -138,13 +126,13 @@ class myDataset(Dataset):
         return self.df.shape[0]
 
 #-----------------------------------------------------------------------
-def getData(file, shuffle=True, batch_size=32, nrows='all'):
+def getData(file, shuffle=True, batch_size=32, nrows=None):
     """
     Arguments:
     ---------
     file: file to process
     batch_size: default: 32
-    nrows: default: 'all'  (read all rows)
+    nrows: default: None  (read all rows)
         Number of rows to read. 
     shuffle: default: True.
         Whether to shuffle the data each iteration or not.
@@ -255,16 +243,19 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
     count = 0
     #for i, (fields, neg, target) in enumerate(tk0):
     for i, (fields, neg, target) in enumerate(data_loader):
+        print("after for, fields, neg, target shapes: ", 
+            fields.shape, neg.shape, target.shape) # (B,3), (B,1), (B,1)
         # More efficient to collect tensors together on CPU and send them all at once
         fields, neg, target = fields.to(device), neg.to(device), target.to(device)
 
         # The 2nd field is the destination
-
         fields_pos = fields
-        a1 = fields[:,0].unsqueeze(1)  # (B,1)
-        a2 = neg[:,0].unsqueeze(1)  # (B, 1)
-        a3 = fields[:, 2:]   # (B, n)
+        a1 = fields[:,0].unsqueeze(1)  # (B,1)  # Why choose the 0th field? 
+        a2 = neg[:,0].unsqueeze(1)  # (B,1)
+        a3 = fields[:, 2:]   # (B, n)  (up to n attributes). fields[:,0] and fields[:1] are users and items
+        print("a1,a2,a3 shapes after unsqueeze: ", a1.shape, a2.shape, a3.shape)  # (4096,1), (4096,1)
         fields_neg = torch.cat((a1,a2,a3), 1)
+        #print("field_neg shape: ", fields_neg.shape)   # (4096,3)
 
         # Deterministic model
         ypos = model(fields_pos)
@@ -301,51 +292,30 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
 #-----------------------------------------------------------------------
 def test_accuracy(model, data_loader, device):
     model.eval()
-    targets  = [torch.empty([]).unsqueeze(0)] # 1D tensor
-    #print(targets[0].shape, targets[0])
-    predicts = [torch.empty([]).unsqueeze(0)] #data_loader.batch_size])]
-    fields_ = [torch.empty([1,3])]
-    #print("before loop: len(predicts): ", len(predicts))
+    fields_ = []
+    predicts = []
     count = 0
-    predicts = [torch.empty([]).unsqueeze(0)] #data_loader.batch_size])]
-    #print("data_loader: ", data_loader, data_loader.batch_size)
-    for i, (d0, d1,age)  in enumerate(data_loader):
-        #print("d0,d1,d2: ", d0, d1, age)
-        #print("d0: ", d0.max())
-        d0 = d0.unsqueeze(1)
-        d1 = d1.unsqueeze(1)
-        d2 = age.unsqueeze(1)
-        d0, d1, d2 = d0.to(device), d1.to(device), d2.to(device)
-        #print(d0.shape, d1.shape, d2.shape)
-        fields = torch.cat([d0,d1,d2], axis=1)
+    # (d0, d1, d2): fields, neg, target
+    for i, (d0, d1, age)  in enumerate(data_loader):
+        fields, neg, target = d0.to(device), d1.to(device), age.to(device)
+        # d1 is negative element
+        # Why is age third element of the data_loader?
+        fields_pos = fields   # (B,3)
 
-        #print("before model")
-        # Change model to take
         with torch.no_grad():
             y = model(fields)
 
-        count = count + 1
-        if count % 10 == 0:
-            print(count, y.shape)
-
-        # targets.extend(target.tolist())
         predicts.append(y)
         fields_.append(fields)
-        #print("len(predicts): ", len(predicts))
-        #print("y shape: ", y.shape)
-        #print("y: ", y)
 
-    predicts = torch.cat(predicts, axis=0)
-    fields_  = torch.cat(fields_, axis=0)
-    print("fields_: ", fields_.shape, predicts.shape)
-    print(type(predicts))
-
+    predicts = torch.cat(predicts[1:], axis=0)
+    fields_  = torch.cat(fields_[1:], axis=0)
 
     predicts = predicts.to('cpu')
     fields_ = fields_.to('cpu')
 
     # Create a single dataframe
-    # return roc_auc_score(targets, predicts)
+    #return roc_auc_score(targets, predicts)  # ERROR IN THIS ROUTINE
 
     return fields_, predicts
 
