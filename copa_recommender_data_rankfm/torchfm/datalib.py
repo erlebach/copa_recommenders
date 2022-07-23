@@ -6,7 +6,7 @@
 import pandas as pd
 import pandas_options
 from torch.utils.data import Dataset
-from fastcore.all import L
+from fastcore.all import L, AttrDict
 import torch
 
 #import numpy as np
@@ -49,7 +49,8 @@ class myDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return torch.tensor(self.data.iloc[idx])# .values
+        print(self.data.iloc[idx].values)
+        return torch.tensor(self.data.iloc[idx].values)# .values
 #---------------------------------------------------------------------------
 
 # This method comes from newlib.py in rankfm/ (I should merge rankfm and torchfm, UNLESS I can duplicate results with fm)
@@ -103,7 +104,7 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     if dct:
         interact_dct = dct
     else:
-        interact_dct = {}
+        interact_dct = AttrDict()
 
     # The leading underscores indicates a private variable by convention
     # Create a dictionary that persists across function invocations
@@ -155,8 +156,9 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     # Only keep attribute columns
     df_ = df_[all_attrib_cols]
 
-    if 'GENDER' in user_attrib_cols:
-        df_ = pd.get_dummies(df_, prefix=['gender'], columns=['GENDER'])
+    ## torchfm uses embedding laters. No need to do this manually
+    #if 'GENDER' in user_attrib_cols:
+        #df_ = pd.get_dummies(df_, prefix=['gender'], columns=['GENDER'])
 
     # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -239,9 +241,24 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     #interact_dct['df_user_attr'] = df_user_attrib
     #interact_dct['df_item_attr'] = df_item_attr
 
+    # Compute field_dims, needed for torchfm. This is the number of unique values for each feature. 
+    # QUESTION: can I use
+
     # A case where inplace=True is useful: the change occurs in interact_dct['df_with_attrib']
     # if inplace=False, the dictionary entry remains unchanged. 
+
+    # Expensive (1s on Ubuntu with 850k rows)
     df_.drop(['IATA','TRUE_ORIGIN_COUNTRY'], axis=1, inplace=True) # add to attributes later (categorical)
+
+    field_dims =  0
+    field_types = L('cat', 'cat', 'num', 'cat') + L(5 * ['num'])
+    nunique = L(list(df_.nunique().values))
+    field_dims = L(len(field_types) * [1])
+    cat_idx = field_types.argwhere(lambda x: x == 'cat')
+    field_dims[cat_idx] = nunique[cat_idx]
+
+    interact_dct['field_types'] = field_types
+    interact_dct['field_dims'] = field_dims
 
     return interact_dct
 
