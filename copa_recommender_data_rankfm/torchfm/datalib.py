@@ -31,7 +31,7 @@ def cat2dict(series):
 
 #-----------------------------------------------------------------------------------------------
 # New experimental class. Once it works, use it instead of myDataset
-class myDataset_neg(Dataset):
+class myDataset(Dataset):
     def __init__(self, dct, data):
         """
         Arguments
@@ -60,6 +60,9 @@ class myDataset_neg(Dataset):
 
         max_for_any_member = self.user_attr.groupby('MEMBER_ID').size().max()
         assert max_for_any_member == 1, "max rows per member in user_attr must be 1"
+
+        self.gen_neg_samples()
+        self.gen_user_attributes()
 
 
     def gen_user_attributes(self):
@@ -128,91 +131,6 @@ class myDataset_neg(Dataset):
         return tt(pos), tt(neg), tt(user), tt(1.)
 
 #-----------------------------------------------------------------------------------------------
-class myDataset(Dataset):
-    def __init__(self, dct, data):
-        """
-        Arguments
-        ---------
-        dct: dictionary
-            Contains all parameters of the model, including data
-
-        data:  (DataFrame)
-            Data to turn into a dataset (train, valid, test). This data 
-            is also accessible from the dicitonary. 
-        """
-        if not isinstance(data, pd.DataFrame):
-            print("The `data` argument must be a DataFrame")
-
-        self.df_ = dct['df_with_attrib']
-        self.data = data
-        self.dct = dct
-
-    def gen_neg_samples(self): 
-        # Compute one negative sample for every row in self.data
-        all_D = set(self.data['D'].unique())
-        # Generate dataframe keyed by MEMBER_ID, with a list of destinations flown to
-
-        self.member_D
-
-        self.member_D['neg_seg'] = self.data.groupby('MEMBER_ID').agg({'D':set})
-        self.member_D['neg'] = self.member_D['D'].map(lambda x: all_D.difference(x))
-        self.user_attr = self.data[self.dct.user_attrib_str].set_index('MEMBER_ID', drop=True)
-        self.item_attr = self.data[self.dct.item_attrib_str]
-        #self.item_attr = self.data[self.dct.item_attrib_str].set_index('D', drop=True)
-
-        #print("self.member_D.columns: ", self.member_D.columns)
-        print("==> ", self.member_D.head(5))
-        return
-
-        #print(self.item_attr.head(5))
-        #print(self.user_attr.head(5))
-        #print(self.dct.df_members)  # still with LIM, etc.
-        #print(self.data.head(5))
-
-        #print("self.data: ", self.data.shape) # 152k
-        #print("member_D: ", self.member_D.shape) # 36k
-        self.member_D['neg_choice'] = self.member_D['neg'].apply(lambda x: np.random.choice(list(x))) # , axis=1)
-        return
-
-        # index:'MEMBER_ID', column: 'neg_choice'
-        #neg = self.member_D['neg_choice'].to_frame('neg_choice')  # destination airport
-
-        #print("neg: ", neg.head())
-        print("item_attr: ", self.item_attr.head())
-        #print("neg columns: ", neg.columns)
-        print("self_member_D.columns: ", self.member_D.columns)
-        print("self.member_D: \n", self.member_D.head(5))
-
-        m = self.member_D.merge(self.item_attr, how='inner', on='D')
-        print("m: ", m)
-
-        def extract_user_attrib():
-            pass
-        def extract_item_attrib():
-            pass
-        
-        # I need to identify the columns that are destination attributes and item attributes
-
-        # Choose negative samples from the 'neg' columns, which contains destinations not flown to 
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        #print(self.data.iloc[idx].values)
-        row = self.data.iloc[idx]
-        return torch.tensor(self.data.iloc[idx].values)# .values
-
-        # DIFFICULTY: I can choose a destination not flown to, but I must also include the attributes. That will decrease efficiency
-        # Code from myfunclib.py
-        row = self.df.iloc[idx,:]
-        member_id = row['MEMBER_ID']
-        # starting with all destinations, calculate set of destinations not flown to by this member
-        diff_set = mself.unique_D - self.D_set.loc[member_id, :].values[0]
-        # Pick a random element from the resulting set
-        neg = random.choice(list(diff_set))  # negative sample
-        return tt(row, dtype=torch.int), tt([neg]), tt([1.])
-#---------------------------------------------------------------------------
 
 # This method comes from newlib.py in rankfm/ (I should merge rankfm and torchfm, UNLESS I can duplicate results with fm)
 def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=False, dct=None, continuous_attrib=False,
