@@ -3,11 +3,13 @@
 # Library to support rankfm
 # Remove modules not used once this works
 
+import numpy as np
 import pandas as pd
 import pandas_options
 from torch.utils.data import Dataset
 from fastcore.all import L, AttrDict
 import torch
+tt = torch.tensor
 
 #import numpy as np
 #import sys
@@ -27,6 +29,105 @@ def cat2dict(series):
     a2idx = dict([(v,k) for k,v in idx2a.items()])
     return idx2a, a2idx
 
+#-----------------------------------------------------------------------------------------------
+# New experimental class. Once it works, use it instead of myDataset
+class myDataset_neg(Dataset):
+    def __init__(self, dct, data):
+        """
+        Arguments
+        ---------
+        dct: dictionary
+            Contains all parameters of the model, including data
+
+        data:  (DataFrame)
+            Data to turn into a dataset (train, valid, test). This data 
+            is also accessible from the dicitonary. 
+        """
+        if not isinstance(data, pd.DataFrame):
+            print("The `data` argument must be a DataFrame")
+
+        self.df_ = dct['df_with_attrib']
+        self.data = data
+        self.dct = dct
+
+        self.user_attr = self.data[dct.user_attrib_str].drop_duplicates()  # (36,528,)
+        dfg = self.user_attr.groupby('MEMBER_ID').size().to_frame('sz')  
+
+        self.item_attr = self.data[self.dct.item_attrib_str].drop_duplicates()
+
+        max_for_any_airport = self.item_attr.groupby('D').size().max() #to_frame("sz")
+        assert max_for_any_airport == 1, "max occurences for any airport must be 1"
+
+        max_for_any_member = self.user_attr.groupby('MEMBER_ID').size().max()
+        assert max_for_any_member == 1, "max rows per member in user_attr must be 1"
+
+
+    def gen_user_attributes(self):
+        # Create array of size 152k with member ids + attributes
+        # The order is different than pos_attr and neg_attr. HOW TO REDRESS THIS?  ERROR <<<<<<<
+        self.user_attr = self.data[['MEMBER_ID','D']].merge(self.user_attr, how="inner", on="MEMBER_ID")
+        self.user_attr = self.user_attr.sort_values(['MEMBER_ID','D']).reset_index(drop=True)
+        dfg = self.user_attr.groupby(['MEMBER_ID','D']).size().max()
+        assert dfg == 1, "max nb members per (MEMBER_ID, D) pair must be 1"
+        self.user_attr_raw = self.user_attr.values
+        
+    def gen_neg_samples(self): 
+        # Compute one negative sample for every row in self.data
+        all_D = set(self.data['D'].unique())
+
+        # Generate dataframe keyed by MEMBER_ID, with a list of destinations flown to
+        # Using all the available data
+        member_D = self.dct.df_with_attrib.copy()[['MEMBER_ID','D']] # 804k
+        member_D = self.data.copy()[['MEMBER_ID','D']] # 804k
+        members = self.data.groupby('MEMBER_ID').agg({'D':set}).reset_index().rename({'D':'dest_set'}, axis=1)   # 41k
+
+        m = members.merge(member_D, how="inner", on="MEMBER_ID") # 152k
+
+        m['neg_set'] = m['dest_set'].map(lambda x: all_D.difference(x))
+        m['neg_sample'] = m['neg_set'].apply(lambda x: np.random.choice(list(x)))  
+
+        pos_attr = m.merge(self.item_attr, how='inner', on='D')
+        neg_attr = m.merge(self.item_attr, how='inner', left_on='neg_sample', right_on='D')
+
+        pos_attr = pos_attr.drop(['dest_set','neg_set'], axis=1)
+        neg_attr = neg_attr.drop(['dest_set','neg_set'], axis=1)
+
+        pos_attr = pos_attr.drop('neg_sample', axis=1)
+        neg_attr = neg_attr.drop(['D_y'], axis=1)
+        neg_attr = neg_attr.rename({'D_x':'D'}, axis=1)
+
+        # nb   occurences
+        # 1    139872   (neg sample occurs once)
+        # 2      6053   (occurs twice) (x 23.1 = 139872)
+        # 3       258   (occurs 3x)  (x 23.46 = 6053)
+        # 4        11   (occurs 4x) (x 23.45 = 11)
+        # This is unbelievable!!! What are the odds of this happening since I did uniform sampling). Hard to believe this is chance. 
+        # Why a ratio of 23 + d, where d \in [0,1]?
+        #print("neg_attr groupby MEMBER_ID/D, nunique: ", neg_attr.groupby(['MEMBER_ID','D']).size().to_frame('sz').groupby('sz').size())
+
+        self.neg_attr = neg_attr.sort_values(['MEMBER_ID','D']).reset_index(drop=True)
+        self.pos_attr = pos_attr.sort_values(['MEMBER_ID','D']).reset_index(drop=True)
+
+        self.neg_attr_raw = self.neg_attr.values
+        self.pos_attr_raw = self.pos_attr.values
+
+        #print("neg/pos shape: ", self.neg_attr.shape, self.pos_attr.shape)  # 152k
+        return
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        # Return MEMBER_ID, D, user_attributes, pos_item_attrib, neg_item_attrib
+        # 1.1 second for  batch of size 4096 on Ubuntu pop!OS at home
+        # 40ms by precomputing numpy arrays for full dataset
+
+        pos = self.pos_attr_raw[idx,:]   # Member, D, dest_attr
+        neg = self.neg_attr_raw[idx,:]   # Member, D, negD, negD_attr
+        user = self.user_attr_raw[idx,:] # Member, D, user_attrib
+        return tt(pos), tt(neg), tt(user), tt(1.)
+
+#-----------------------------------------------------------------------------------------------
 class myDataset(Dataset):
     def __init__(self, dct, data):
         """
@@ -44,13 +145,73 @@ class myDataset(Dataset):
 
         self.df_ = dct['df_with_attrib']
         self.data = data
+        self.dct = dct
+
+    def gen_neg_samples(self): 
+        # Compute one negative sample for every row in self.data
+        all_D = set(self.data['D'].unique())
+        # Generate dataframe keyed by MEMBER_ID, with a list of destinations flown to
+
+        self.member_D
+
+        self.member_D['neg_seg'] = self.data.groupby('MEMBER_ID').agg({'D':set})
+        self.member_D['neg'] = self.member_D['D'].map(lambda x: all_D.difference(x))
+        self.user_attr = self.data[self.dct.user_attrib_str].set_index('MEMBER_ID', drop=True)
+        self.item_attr = self.data[self.dct.item_attrib_str]
+        #self.item_attr = self.data[self.dct.item_attrib_str].set_index('D', drop=True)
+
+        #print("self.member_D.columns: ", self.member_D.columns)
+        print("==> ", self.member_D.head(5))
+        return
+
+        #print(self.item_attr.head(5))
+        #print(self.user_attr.head(5))
+        #print(self.dct.df_members)  # still with LIM, etc.
+        #print(self.data.head(5))
+
+        #print("self.data: ", self.data.shape) # 152k
+        #print("member_D: ", self.member_D.shape) # 36k
+        self.member_D['neg_choice'] = self.member_D['neg'].apply(lambda x: np.random.choice(list(x))) # , axis=1)
+        return
+
+        # index:'MEMBER_ID', column: 'neg_choice'
+        #neg = self.member_D['neg_choice'].to_frame('neg_choice')  # destination airport
+
+        #print("neg: ", neg.head())
+        print("item_attr: ", self.item_attr.head())
+        #print("neg columns: ", neg.columns)
+        print("self_member_D.columns: ", self.member_D.columns)
+        print("self.member_D: \n", self.member_D.head(5))
+
+        m = self.member_D.merge(self.item_attr, how='inner', on='D')
+        print("m: ", m)
+
+        def extract_user_attrib():
+            pass
+        def extract_item_attrib():
+            pass
+        
+        # I need to identify the columns that are destination attributes and item attributes
+
+        # Choose negative samples from the 'neg' columns, which contains destinations not flown to 
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        print(self.data.iloc[idx].values)
+        #print(self.data.iloc[idx].values)
+        row = self.data.iloc[idx]
         return torch.tensor(self.data.iloc[idx].values)# .values
+
+        # DIFFICULTY: I can choose a destination not flown to, but I must also include the attributes. That will decrease efficiency
+        # Code from myfunclib.py
+        row = self.df.iloc[idx,:]
+        member_id = row['MEMBER_ID']
+        # starting with all destinations, calculate set of destinations not flown to by this member
+        diff_set = mself.unique_D - self.D_set.loc[member_id, :].values[0]
+        # Pick a random element from the resulting set
+        neg = random.choice(list(diff_set))  # negative sample
+        return tt(row, dtype=torch.int), tt([neg]), tt([1.])
 #---------------------------------------------------------------------------
 
 # This method comes from newlib.py in rankfm/ (I should merge rankfm and torchfm, UNLESS I can duplicate results with fm)
@@ -152,6 +313,9 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
         _dct['raw_data'] = df_
 
     df_.rename(columns={'age_at_flight':'age_departure'}, inplace=True)
+
+    # Replace age of departure by an average age
+    df_['age_departure'] = df_.groupby('MEMBER_ID')['age_departure'].transform('mean')
 
     # Only keep attribute columns
     df_ = df_[all_attrib_cols]
@@ -256,9 +420,17 @@ def read_data_attributes_single_file(in_file, age_cuts=None, overwrite_cache=Fal
     field_dims = L(len(field_types) * [1])
     cat_idx = field_types.argwhere(lambda x: x == 'cat')
     field_dims[cat_idx] = nunique[cat_idx]
+    cols = L(list(df_.columns))
+    print("df_: ", df_.columns)
+
+    print("SHOULD NOT CREATE user_attrib_idx and item_attrib_idx manually! SHOULD DO THIS BEFORE CALL TO this method")
+    interact_dct['user_attrib_idx'] = L(0,2,3)
+    interact_dct['item_attrib_idx'] = L(1,4,5,6,7,8)
+    interact_dct['user_attrib_str'] = cols[interact_dct['user_attrib_idx']]
+    interact_dct['item_attrib_str'] = cols[interact_dct['item_attrib_idx']]
 
     interact_dct['field_types'] = field_types
-    interact_dct['field_dims'] = field_dims
+    interact_dct['field_dims'] = torch.tensor(field_dims)
 
     return interact_dct
 

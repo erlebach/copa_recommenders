@@ -1,1 +1,2 @@
 torchfm is available in the d2l Python environment
+in file temp_long_lat_height.csv, there are sometimes some ascii characters intermixed with the floats. These must be manually removed at this time. 

@@ -103,7 +103,6 @@ class myDataset(Dataset):
         self.member_attr = [0,2]
         self.dest_attr = [1]
         
-        dct = {}
         dct['member_attr'] = self.member_attr
         dct['dest_attr']   = self.dest_attr
         dct['field_dims']  = self.field_dims
@@ -117,8 +116,9 @@ class myDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx,:]
         member_id = row['MEMBER_ID']
+        # starting with all destinations, calculate set of destinations not flown to by this member
         diff_set = self.unique_D - self.D_set.loc[member_id, :].values[0]
-        # Pick a random element from the set
+        # Pick a random element from the resulting set
         neg = random.choice(list(diff_set))  # negative sample
         return tt(row, dtype=torch.int), tt([neg]), tt([1.])
     
@@ -195,7 +195,7 @@ class AccuracyDataset(Dataset):
         
         
     def __len__(self):
-        print("len: ",  self.n_members * self.n_dest)
+        #print("len: ",  self.n_members * self.n_dest)
         return self.n_members * self.n_dest
     
     def __getitem__(self, idx):
@@ -234,6 +234,7 @@ def setup_trainer(net, gdct):
     return optimizer, loss_func
 #----------------------------------------------------------------------------
 def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=100):
+    print("INSIDE train_epoch")
     # Model is already on the device
     model.train()
     total_loss = 0
@@ -241,8 +242,13 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
     losses = []
     dct = {}
     count = 0
-    #for i, (fields, neg, target) in enumerate(tk0):
-    for i, (fields, neg, target) in enumerate(data_loader):
+    #for i, (fields, neg, target) in enumerate(data_loader):
+    print("before for")
+    print("data_loader: ", data_loader)
+    for i, fields in enumerate(data_loader):
+        print("inside for")   # NOT PRINTING. WHY?
+        print("i= ", i)
+        print("fields= ", fields)
         print("after for, fields, neg, target shapes: ", 
             fields.shape, neg.shape, target.shape) # (B,3), (B,1), (B,1)
         # More efficient to collect tensors together on CPU and send them all at once

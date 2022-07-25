@@ -2,7 +2,7 @@ import pandas as pd
 import pandas_options
 import numpy as np
 
-df_air = pd.read_csv("airports.csv")
+df_air = pd.read_csv("airports.csv")  
 df_cou = pd.read_csv("countries.csv")
 df_copa = pd.read_csv("copa_destinations.csv")
 
@@ -40,7 +40,14 @@ df = pd.concat([df_air, df], axis=0)
 print(df)
 print(df.shape)
 df.columns = ['D'] + list(df.columns[1:])
+
+# GUA appears twice. WHY? 
 df.to_csv("airport_temperatures.csv", index=0)
+# airports.csv contains GUA twice: 
+#GUA,60.16666666666666,57.333333333333336,62.333333333333336,62.0,59.0,75.83333333333333,76.0,78.33333333333333,75.66666666666667,73.33333333333333
+#GUA,52.833333333333336,44.66666666666666,57.333333333333336,61.0,48.333333333333336,81.0,79.33333333333333,87.0,79.66666666666667,78.0
+# countries.csv: 
+# Guatemala City ,guatemala.txt,Low,60.166666666666664,57.333333333333336,62.333333333333336,62.0,59.0,High,75.83333333333333,76.0,78.33333333333333,75.66666666666667,73.33333333333333
 
 # I am missing airports (about 30)
 air = set(df['D'])

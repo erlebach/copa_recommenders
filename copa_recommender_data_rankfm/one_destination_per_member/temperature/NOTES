@@ -1,12 +1,12 @@
 July 2, 2022
+To generate file with temperatures for all airports, do the following: 
 
 cd temperatures_airports
-
 python read_files.py 
 cp some_airport_tempratures.csv ../airports.csv
 cd ..
-cd temperatures_countries
 
+cd temperatures_countries
 python read_files.py 
 cp temperatures_countries.csv ../countries.csv
 cd ../
