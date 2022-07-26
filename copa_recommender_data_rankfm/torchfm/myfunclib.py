@@ -246,25 +246,56 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
     print("before for")
     print("data_loader: ", data_loader)
     for i, fields in enumerate(data_loader):
-        print("inside for")   # NOT PRINTING. WHY?
+        #print("inside for")   # NOT PRINTING. WHY?
         print("i= ", i)
-        print("fields= ", fields)
-        print("after for, fields, neg, target shapes: ", 
-            fields.shape, neg.shape, target.shape) # (B,3), (B,1), (B,1)
+        #print("len fields= ", len(fields))
+        batch_size = data_loader.batch_size
+        user_attr = fields[0]  # member_id, D, attr
+        pos_attr = fields[1]   # member_id, D, attr(D)
+        neg_attr = fields[2]   # member_id, D, negD, attr(negD)
+        # Remove
+        #print("1 pos_attr: \n", pos_attr[0,:])
+        #print("1 neg_attr: \n", neg_attr[0,:])
+        pos_attr = pos_attr[:, 1:]  # <<< ERROR
+        neg_attr = neg_attr[:, 2:]
+        #print("1 pos_attr: \n", pos_attr[0,:])
+        #print("1 neg_attr: \n", neg_attr[0,:])
+        target = fields[3]
+        print("2 user_attr: \n", user_attr[0,:])
+        # I need to remove the second column from user_attr. Alternatively, just leave it, 
+        # and modify input to the NN FM model.
+        print("2 pos_attr: \n", pos_attr[0,:])
+        print("neg_attr: \n", neg_attr[0,:])
+        print("target: \n", target[0])
+        print("after for, fields, user, pos, neg, target shapes: ", 
+            len(fields), user_attr.shape, pos_attr.shape, neg_attr.shape, target.shape) # (B,3), (B,1), (B,1)
         # More efficient to collect tensors together on CPU and send them all at once
-        fields, neg, target = fields.to(device), neg.to(device), target.to(device)
+
+        # Target is always 1
+        user_attr, pos_attr, neg_attr, target = user_attr.to(device), pos_attr.to(device), neg_attr.to(device), target.to(device)
 
         # The 2nd field is the destination
-        fields_pos = fields
-        a1 = fields[:,0].unsqueeze(1)  # (B,1)  # Why choose the 0th field? 
-        a2 = neg[:,0].unsqueeze(1)  # (B,1)
-        a3 = fields[:, 2:]   # (B, n)  (up to n attributes). fields[:,0] and fields[:1] are users and items
-        print("a1,a2,a3 shapes after unsqueeze: ", a1.shape, a2.shape, a3.shape)  # (4096,1), (4096,1)
-        fields_neg = torch.cat((a1,a2,a3), 1)
+        #fields_pos = fields
+        #a1 = fields[:,0].unsqueeze(1)  # (B,1)  # Why choose the 0th field? 
+        #a2 = neg[:,0].unsqueeze(1)  # (B,1)
+        #a3 = fields[:, 2:]   # (B, n)  (up to n attributes). fields[:,0] and fields[:1] are users and items
+        #print("a1,a2,a3 shapes after unsqueeze: ", a1.shape, a2.shape, a3.shape)  # (4096,1), (4096,1)
+        #fields_neg = torch.cat((a1,a2,a3), 1)
         #print("field_neg shape: ", fields_neg.shape)   # (4096,3)
 
+        target = target.unsqueeze(1)
+
+        # let us not worry about efficiency
+        print(user_attr.device, pos_attr.device, neg_attr.device, target.device)
+        fields_pos = torch.cat([user_attr, pos_attr, target], axis=1)
+        fields_neg = torch.cat([user_attr, neg_attr, target], axis=1)
+
+        print(fields_neg.shape, fields_pos.shape)
+        print("pos: ", fields_pos[0,:])
+        print("neg: ", fields_neg[0,:])
+
         # Deterministic model
-        ypos = model(fields_pos)
+        ypos = model(fields_pos)   # <<<< ERROR
         yneg = model(fields_neg)
 
         # yneg = model(fields, neg)

@@ -128,7 +128,7 @@ class myDataset(Dataset):
         pos = self.pos_attr_raw[idx,:]   # Member, D, dest_attr
         neg = self.neg_attr_raw[idx,:]   # Member, D, negD, negD_attr
         user = self.user_attr_raw[idx,:] # Member, D, user_attrib
-        return tt(pos), tt(neg), tt(user), tt(1.)
+        return tt(user), tt(pos), tt(neg), tt(1.)
 
 #-----------------------------------------------------------------------------------------------
 
