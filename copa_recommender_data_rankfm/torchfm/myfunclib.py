@@ -1,3 +1,4 @@
+import time as timer
 import random
 import pandas as pd
 import numpy as np
@@ -233,8 +234,82 @@ def setup_trainer(net, gdct):
     loss_func = bpr_loss_func
     return optimizer, loss_func
 #----------------------------------------------------------------------------
+def train_epoch_new(model, optimizer, data_loader, criterion, device, log_interval=100):
+    #"""
+    start = torch.cuda.Event(enable_timing=True)
+    end   = torch.cuda.Event(enable_timing=True)
+    #"""
+
+    # Model is already on the device
+    model.train()
+    total_loss = 0
+    # tk0 = tqdm.tqdm(data_loader, smoothing=0, mininterval=5.0, nrows=5)
+    losses = []
+    count = 0
+
+    #"""
+    start.record()  # 500 ms (data_loader takes 1/2)
+    #"""
+    for i, fields in enumerate(data_loader):
+        #start.record()  # 2 ms
+        pos_float, neg_float, pos_emb, neg_emb = fields  # member_id, D, attr
+
+        # Target not on the device
+        # data transferred to the device in myDataset class
+
+        # Max value of pos and neg_emb (36467)
+
+        ypos = model(pos_emb)   # <<<< ERROR
+        yneg = model(neg_emb)
+
+        # neg and pos are actually destinations + their attributes
+        # So I should have a fields_pos and a fields_neg. It is easy if
+        # there are no attributes for the destination. What is not clear is how
+        # to handl the cross-attributes (i.e., date of flight, time of flight).
+        # If there are only member and flight attributes, it is not an issue.
+        # HOW TO HANDLE THIS??? For this, look into sequence-aware recommenders and
+        # check out how they do it.
+
+        # apply BCR loss/criterion
+        loss = criterion(ypos, yneg)
+
+        model.zero_grad()
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+        count += 1
+
+        # NO IDEA WHAT THIS DOES
+        # if (i + 1) % log_interval == 0:
+        #     tk0.set_postfix(loss=total_loss / log_interval)
+        #     total_loss = 0
+        #if i % 10 == 0: 
+            #print(f"total_loss (sum over batch): {total_loss}, count: {count}")
+            #pass
+        total_loss = total_loss / data_loader.dataset.df_.shape[0]
+
+                                  # 48 ms per batch (size 4*1024) (entire function). Time in both model calls: 0.33 ms. 
+                                  # Cost proportional to batch size. Logical. 
+        #end.record()
+    #"""
+    end.record()
+    torch.cuda.synchronize()  # 12 ms per batch (size 1024) (entire function). Time in both model calls: 0.33 ms. 
+    print("elapased time per epoch: ", start.elapsed_time(end))
+    #"""
+
+
+
+    return(total_loss)
+
+#-----------------------------------------------------------------------
+#----------------------------------------------------------------------------
 def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=100):
-    print("INSIDE train_epoch")
+    start = torch.cuda.Event(enable_timing=True)
+    end   = torch.cuda.Event(enable_timing=True)
+    start.record()
+
+
+    #print("INSIDE train_epoch")
     # Model is already on the device
     model.train()
     total_loss = 0
@@ -242,61 +317,75 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
     losses = []
     dct = {}
     count = 0
-    #for i, (fields, neg, target) in enumerate(data_loader):
-    print("before for")
-    print("data_loader: ", data_loader)
+    # attr_D and attr_negD: avg_yr_L, avg_yr_h, LAT_DEC, LON_DEC, HEIGHT
+    # attr_user: age_departure, gender
     for i, fields in enumerate(data_loader):
-        #print("inside for")   # NOT PRINTING. WHY?
-        print("i= ", i)
-        #print("len fields= ", len(fields))
         batch_size = data_loader.batch_size
         user_attr = fields[0]  # member_id, D, attr
+
         pos_attr = fields[1]   # member_id, D, attr(D)
         neg_attr = fields[2]   # member_id, D, negD, attr(negD)
-        # Remove
-        #print("1 pos_attr: \n", pos_attr[0,:])
-        #print("1 neg_attr: \n", neg_attr[0,:])
-        pos_attr = pos_attr[:, 1:]  # <<< ERROR
+        pos_attr = pos_attr[:, 1:]  
         neg_attr = neg_attr[:, 2:]
-        #print("1 pos_attr: \n", pos_attr[0,:])
-        #print("1 neg_attr: \n", neg_attr[0,:])
         target = fields[3]
-        print("2 user_attr: \n", user_attr[0,:])
-        # I need to remove the second column from user_attr. Alternatively, just leave it, 
-        # and modify input to the NN FM model.
-        print("2 pos_attr: \n", pos_attr[0,:])
-        print("neg_attr: \n", neg_attr[0,:])
-        print("target: \n", target[0])
-        print("after for, fields, user, pos, neg, target shapes: ", 
-            len(fields), user_attr.shape, pos_attr.shape, neg_attr.shape, target.shape) # (B,3), (B,1), (B,1)
-        # More efficient to collect tensors together on CPU and send them all at once
 
         # Target is always 1
         user_attr, pos_attr, neg_attr, target = user_attr.to(device), pos_attr.to(device), neg_attr.to(device), target.to(device)
 
-        # The 2nd field is the destination
-        #fields_pos = fields
-        #a1 = fields[:,0].unsqueeze(1)  # (B,1)  # Why choose the 0th field? 
-        #a2 = neg[:,0].unsqueeze(1)  # (B,1)
-        #a3 = fields[:, 2:]   # (B, n)  (up to n attributes). fields[:,0] and fields[:1] are users and items
-        #print("a1,a2,a3 shapes after unsqueeze: ", a1.shape, a2.shape, a3.shape)  # (4096,1), (4096,1)
-        #fields_neg = torch.cat((a1,a2,a3), 1)
-        #print("field_neg shape: ", fields_neg.shape)   # (4096,3)
+        member_id = user_attr[:, 0].unsqueeze(1) 
+        D = pos_attr[:, 0].unsqueeze(1)
+        negD = neg_attr[:, 0].unsqueeze(1)
+        #print("D,negD,member_id: ", D.shape, negD.shape, member_id.shape)
+        user_attr = user_attr[:, 2:] # skip MEMBER_ID, D
+        pos_attr = pos_attr[:, 1:]  
+        neg_attr = neg_attr[:, 1:]
 
         target = target.unsqueeze(1)
 
+        #print("user, pos, neg, target: ", user_attr.shape, pos_attr.shape, neg_attr.shape, target.shape)
+
+
         # let us not worry about efficiency
-        print(user_attr.device, pos_attr.device, neg_attr.device, target.device)
-        fields_pos = torch.cat([user_attr, pos_attr, target], axis=1)
-        fields_neg = torch.cat([user_attr, neg_attr, target], axis=1)
+        #print(user_attr.device, pos_attr.device, neg_attr.device, target.device)
+        fields_pos = torch.cat([member_id, D, user_attr, pos_attr], axis=1)
+        fields_neg = torch.cat([member_id, negD, user_attr, neg_attr], axis=1)
 
-        print(fields_neg.shape, fields_pos.shape)
-        print("pos: ", fields_pos[0,:])
-        print("neg: ", fields_neg[0,:])
+        # ISSUE: fields_pos are all floats. However, the fields slatted for an embeddings should be ints, 
+        # and only these fields should be fed to the network. 
+         
+        # Extract all the integer fields
+        fields_pos_emb = torch.cat([fields_pos[:,0:2], fields_pos[:,3:4]], axis=1)
+        fields_neg_emb = torch.cat([fields_neg[:,0:2], fields_neg[:,3:4]], axis=1)
+        fields_pos_float = torch.cat([fields_pos[:,2:3], fields_pos[:,4:]], axis=1)
+        fields_neg_float = torch.cat([fields_neg[:,2:3], fields_neg[:,4:]], axis=1)
 
-        # Deterministic model
-        ypos = model(fields_pos)   # <<<< ERROR
-        yneg = model(fields_neg)
+        # make all the embedding fields into integers
+        #print("pos_emb: ", fields_pos_emb[0,:])
+        #print("neg_emb: ", fields_neg_emb[0,:])
+        fields_pos_emb = fields_pos_emb.type(torch.int32)
+        fields_neg_emb = fields_neg_emb.type(torch.int32)
+        #print("pos_emb: ", fields_pos_emb[0,:])
+        #print("neg_emb: ", fields_neg_emb[0,:])
+
+        #print(fields_neg.shape, fields_pos.shape)
+        #print("pos: ", pos_attr[0,:])
+        #print("neg: ", neg_attr[0,:])
+        #print("user: ", user_attr[0,:])
+        #print("member_id: ", member_id[0,:])
+        #print("fields_pos: ", fields_pos[0,:])
+        #print("fields_neg: ", fields_neg[0,:])
+
+        # Create the dims field
+
+
+        # Fields: Member, Dest, age, gender, yr_l, yr_h, lat, long, altitude
+
+
+        # Deterministic model. The base FM has arguments in any order
+        #start.record()
+        ypos = model(fields_pos_emb)   # <<<< ERROR
+        yneg = model(fields_neg_emb)
+        #end.record()
 
         # yneg = model(fields, neg)
         # apply BCR loss/criterion
@@ -323,7 +412,15 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
         if i % 10 == 0: 
             #print(f"total_loss (sum over batch): {total_loss}, count: {count}")
             pass
-        total_loss = total_loss / data_loader.dataset.df.shape[0]
+        total_loss = total_loss / data_loader.dataset.df_.shape[0]
+
+        end.record()
+        torch.cuda.synchronize()  # 12 ms per batch (size 1024) (entire function). Time in both model calls: 0.33 ms. 
+                                  # 48 ms per batch (size 4*1024) (entire function). Time in both model calls: 0.33 ms. 
+                                  # Cost proportional to batch size. Logical. 
+        print("elapased time in train_epoch: ", start.elapsed_time(end))
+
+
     return(total_loss)
 
 #-----------------------------------------------------------------------

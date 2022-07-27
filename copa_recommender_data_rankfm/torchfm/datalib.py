@@ -64,7 +64,6 @@ class myDataset(Dataset):
         self.gen_neg_samples()
         self.gen_user_attributes()
 
-
     def gen_user_attributes(self):
         # Create array of size 152k with member ids + attributes
         # The order is different than pos_attr and neg_attr. HOW TO REDRESS THIS?  ERROR <<<<<<<
@@ -84,6 +83,7 @@ class myDataset(Dataset):
         member_D = self.data.copy()[['MEMBER_ID','D']] # 804k
         members = self.data.groupby('MEMBER_ID').agg({'D':set}).reset_index().rename({'D':'dest_set'}, axis=1)   # 41k
 
+        # Only addresses item (Destination) attributes + MEMBER_ID
         m = members.merge(member_D, how="inner", on="MEMBER_ID") # 152k
 
         m['neg_set'] = m['dest_set'].map(lambda x: all_D.difference(x))
@@ -106,7 +106,6 @@ class myDataset(Dataset):
         # 4        11   (occurs 4x) (x 23.45 = 11)
         # This is unbelievable!!! What are the odds of this happening since I did uniform sampling). Hard to believe this is chance. 
         # Why a ratio of 23 + d, where d \in [0,1]?
-        #print("neg_attr groupby MEMBER_ID/D, nunique: ", neg_attr.groupby(['MEMBER_ID','D']).size().to_frame('sz').groupby('sz').size())
 
         self.neg_attr = neg_attr.sort_values(['MEMBER_ID','D']).reset_index(drop=True)
         self.pos_attr = pos_attr.sort_values(['MEMBER_ID','D']).reset_index(drop=True)
@@ -114,7 +113,33 @@ class myDataset(Dataset):
         self.neg_attr_raw = self.neg_attr.values
         self.pos_attr_raw = self.pos_attr.values
 
-        #print("neg/pos shape: ", self.neg_attr.shape, self.pos_attr.shape)  # 152k
+        self.pos_attr_emb_raw = self.pos_attr[["MEMBER_ID", "D"]]
+        self.neg_attr_emb_raw = self.neg_attr[["MEMBER_ID", "neg_sample"]]
+        self.pos_attr_float_raw = self.pos_attr[['avg_yr_l','avg_yr_h','LAT_DEC','LON_DEC','HEIGHT']]
+        self.neg_attr_float_raw = self.neg_attr[['avg_yr_l','avg_yr_h','LAT_DEC','LON_DEC','HEIGHT']]
+        self.user_attr_emb_raw = self.user_attr[["MEMBER_ID", "GENDER"]]
+        self.user_attr_float_raw = self.user_attr[["age_departure"]]  # DataFrame
+
+        user_attr_merged = self.pos_attr_emb_raw[['MEMBER_ID']].merge(self.user_attr, how='left', on='MEMBER_ID')
+        user_attr_float  = user_attr_merged[['age_departure']]  # DataFrame because of [[ ]]
+        user_attr_emb    = user_attr_merged[['GENDER']]  # DataFrame because of [[ ]]
+
+        self.neg_attr_float = pd.concat([user_attr_float, self.neg_attr_float_raw], axis=1)
+        self.pos_attr_float = pd.concat([user_attr_float, self.pos_attr_float_raw], axis=1)
+        self.pos_attr_emb   = pd.concat([self.pos_attr_emb_raw, user_attr_emb], axis=1)
+        self.neg_attr_emb   = pd.concat([self.neg_attr_emb_raw, user_attr_emb], axis=1)
+
+        self.pos_attr_emb = self.pos_attr_emb.astype('int')
+        self.neg_attr_emb = self.neg_attr_emb.astype('int')
+
+        # For efficiency, store directly on CPU
+        print("Create torch.tensor on device")
+        device = self.dct.device
+        self.pos_attr_emb = tt(self.pos_attr_emb.values).to(device)
+        self.neg_attr_emb = tt(self.neg_attr_emb.values).to(device)
+        self.pos_attr_float = tt(self.pos_attr_float.values).to(device)
+        self.neg_attr_float = tt(self.neg_attr_float.values).to(device)
+
         return
 
     def __len__(self):
@@ -125,10 +150,10 @@ class myDataset(Dataset):
         # 1.1 second for  batch of size 4096 on Ubuntu pop!OS at home
         # 40ms by precomputing numpy arrays for full dataset
 
-        pos = self.pos_attr_raw[idx,:]   # Member, D, dest_attr
-        neg = self.neg_attr_raw[idx,:]   # Member, D, negD, negD_attr
-        user = self.user_attr_raw[idx,:] # Member, D, user_attrib
-        return tt(user), tt(pos), tt(neg), tt(1.)
+        return  self.pos_attr_float[idx,:],  \
+                self.neg_attr_float[idx,:],  \
+                self.pos_attr_emb[idx,:],    \
+                self.neg_attr_emb[idx,:]
 
 #-----------------------------------------------------------------------------------------------
 
