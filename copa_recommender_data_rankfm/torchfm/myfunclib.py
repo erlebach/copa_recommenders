@@ -330,7 +330,7 @@ def train_epoch(model, optimizer, data_loader, criterion, device, log_interval=1
         target = fields[3]
 
         # Target is always 1
-        user_attr, pos_attr, neg_attr, target = user_attr.to(device), pos_attr.to(device), neg_attr.to(device), target.to(device)
+        # user_attr, pos_attr, neg_attr, target = user_attr.to(device), pos_attr.to(device), neg_attr.to(device), target.to(device)
 
         member_id = user_attr[:, 0].unsqueeze(1) 
         D = pos_attr[:, 0].unsqueeze(1)
@@ -430,23 +430,31 @@ def test_accuracy(model, data_loader, device):
     predicts = []
     count = 0
     # (d0, d1, d2): fields, neg, target
-    for i, (d0, d1, age)  in enumerate(data_loader):
-        fields, neg, target = d0.to(device), d1.to(device), age.to(device)
-        # d1 is negative element
-        # Why is age third element of the data_loader?
-        fields_pos = fields   # (B,3)
+    for i, fields in enumerate(data_loader):
+        pos_float, neg_float, pos_emb, neg_emb = fields
+        #print("pos_emb: ", pos_emb.shape)
+
 
         with torch.no_grad():
-            y = model(fields)
+            # Ignore float attributes for now
+            y = model(pos_emb)
 
         predicts.append(y)
-        fields_.append(fields)
+        fields_.append(pos_emb)
 
-    predicts = torch.cat(predicts[1:], axis=0)
-    fields_  = torch.cat(fields_[1:], axis=0)
+    #print("len(fields): ", len(fields))
+    #for i in range(len(fields)):
+        #print(f"shape field {i}: {fields[i].shape}")
+        #print(f"shape predict {i}: {predicts[i].shape}")
+
+    predicts = torch.cat(predicts[:], axis=0)
+    fields_  = torch.cat(fields_[:], axis=0)
 
     predicts = predicts.to('cpu')
     fields_ = fields_.to('cpu')
+
+    #print("predicts: ", predicts.shape)
+    #print("fields_: ", fields_.shape)
 
     # Create a single dataframe
     #return roc_auc_score(targets, predicts)  # ERROR IN THIS ROUTINE
@@ -454,3 +462,198 @@ def test_accuracy(model, data_loader, device):
     return fields_, predicts
 
 #--------------------------------------------------------------------------
+def recommender(model, dct, topN=5, keep_nb_members=None):
+    """
+    Compute the hit_rate to evaluate destinations
+
+    Arguments: 
+    ---------
+    model
+    interactions_dct: dictionary
+    topN: [5]
+        number of elements to keep
+    keep_members: [None]
+        number of members to consider in validation
+
+    Return
+    ------
+    pair: list of pairs (MEMBER_ID, D) used to validate
+
+    """
+    user_attrib = restrict_member_attrib(dct)
+    data_train = dct['data_train']
+    data_valid = dct['data_valid']
+    all_data = dct['df_members']
+    all_dest= np.asarray(sorted(list(all_data.D.unique())))
+
+    # Translate all_dest from destinations with 'PTY' into an integer
+    dest_idx = [dct.dest2idx[dest] for dest in all_dest]
+    all_dest = dest_idx
+
+    train_dest_sets = data_train.groupby('MEMBER_ID').agg({'D':set})
+    valid_dest_sets = data_valid.groupby('MEMBER_ID').agg({'D':set})
+    dct['train_dest_sets'] = train_dest_sets
+    dct['valid_dest_sets'] = valid_dest_sets
+
+    # For each member in the validation set, estimate the scores for all destinations. 
+    members = data_valid.MEMBER_ID.unique()  # ndarray of members
+
+    # Access MEMBER_ID via index or column
+    valid_dest_sets['MEMBER_ID'] = valid_dest_sets.index
+    train_dest_sets['MEMBER_ID'] = train_dest_sets.index
+
+    # Keep a small number of members
+
+    if keep_nb_members != None:
+        members = members[0:keep_nb_members]
+
+    pairs = []
+    for i, member in enumerate(members):
+        for dest in all_dest:
+            pairs.append((member, dest))
+
+    pairs = pd.DataFrame(pairs, columns=['MEMBER_ID','D'])
+    print("pairs.shape: ", pairs.shape) # 2M records. For each member, 80 destinations
+    #print("data_train: ", data_train.head())
+    #print("data_valid: ", data_valid.head())  
+    # pred will be of smaller size than pairs if cold_start is 'drop'
+    #print("pairs: ", pairs)  # the destinations are 'GRU', etc., not numbers. Why? 
+
+    ### TEST ON TRAINING set first. Then on the DATA_VALID dataset. 
+    loader = DataLoader(dct.dataset_train, batch_size=dct.batch_size, shuffle=True)
+    print("after loader")
+    print("dct: ", dct.keys())
+    print("data_train[3]: ", dct.dataset_train[3])
+
+    #for i,d in enumerate(loader.dataset):
+        #print(i, len(d))
+    #raise "Error"
+
+    print("batch_size: ", dct.batch_size)
+
+    # I MUST CONSTRUCT A NEW LOADER: For each member, all the destinations
+    valid_loader = None   # MUST BE CONSTRUCTED <<<<<
+
+    fields, predicts = test_accuracy(model, loader, dct.device)
+    #pred = model.predict(pairs, cold_start='nan')   # <<< NO PREDICT. I should run the model  
+
+    print("pairs: ", pairs.shape, pairs.columns)
+    print("pred: ", predicts.shape)  # 42685
+    print("pairs columns: ", pairs.columns)
+
+    raise "ERROR"  # Reached this point 
+
+    #-------------------
+
+    res1 = pairs.groupby('MEMBER_ID').agg({'D':list, 'pred':list})
+
+    res1['argsort'] = res1['pred'].apply(lambda x: np.argsort(x)[::-1])
+
+    def extract_topN(res1, topn):
+        def argsortcolD(row):
+            return np.array(row['D'])[row['argsort'][0:topn]]
+
+        def argsortcolPred(row):
+            return np.array(row['pred'])[row['argsort'][0:topn]]
+
+        res1['D1'] = res1.apply(argsortcolD, axis=1)
+        res1['pred1'] = res1.apply(argsortcolPred, axis=1)
+        res2 = res1.drop(['D','pred', 'argsort'], axis=1)  # lists or ndarray:w
+        return res2
+
+    res2 = extract_topN(res1, topn=topN)
+
+    # res2 has columns 'D1' and 'pred1': 
+    # 'D1' predicted destinations
+    # 'scores' predicted scores in ranked drder
+
+#  First issue: even when running 500 epochs, the scores are a mixture of neg and positive. WHY? 
+#  I wonder if this is true with the training data? 
+
+    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
+    # flights actually flown in the validation set. 
+    # Keep all recommended flights even if found in th e # training set. 
+
+
+    # Do not filter out hits in the training set
+    hits = 0
+    for member in members: 
+        set_valid = valid_dest_sets.loc[member]
+        valid_dests = set_valid['D']  # set
+        ranked_dests = res2.loc[member, 'D1']  # ndarray
+        # Recall that above, I kept topN+2 ranked elements for the non-filtered case
+        if valid_dests.intersection(ranked_dests):
+            hits += 1
+
+    hr_notfiltered = hits/len(members)
+    print("hit rate (without previous filter) = ", hr_notfiltered)
+
+    # Filter out hits in the training set
+    # Inefficient implementation
+    # Calculate the number of this when filtered
+    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
+    # flights actually flown in the validation set. 
+    # Remove from the recommended flights, any flights found in the training set. 
+
+    res2 = extract_topN(res1, topn=8*topN)
+    #print("res2: ", res2)
+
+    hits = 0
+    nb_members = len(members)
+    for member in members:
+        # print("member: ", member)
+        try:
+            td = train_dest_sets.loc[member]  # train destinations (set)
+        except:
+            nb_members -= 1
+            continue
+        set_valid = valid_dest_sets.loc[member]
+        vd = set_valid['D']    # validation destinations (set)
+        rp = res2.loc[member, 'D1'] # ranked prediction (ndarray)
+        rk = []
+        for d in rp:
+            if d in td['D']: 
+                continue
+            rk.append(d)
+            if len(rk) == topN:
+                break
+
+        if len(rk) != topN:
+            print("len(rk): ", len(rk))
+        if len(rk) < topN:
+            print("==> member: ", member)
+            print("    vd = ", vd, "    (validation dest)")
+            print("    td= ", td.values, "  (training dest)")
+            print("    rk= ", rk[0:10], "   (ranked dest)")
+            print("    rp= ", rp, "    (trimmed ranked dest)")
+            print("    len(vd): ", len(vd), "   , len(td): ", len(td))     
+        if vd.intersection(rk):
+            hits += 1
+
+    # I should also print how many correct out of the number of actual trips. TO DO.  MYHouse 
+
+    # Identical to the hit rate built into rankfm! That is great!
+    hr_filtered = hits/nb_members
+    print("hit rate (with previous filter) = ", hr_filtered)
+
+
+    return pairs, hr_notfiltered, hr_filtered
+#---------------------------------------------------------------------------------------------------
+def restrict_member_attrib(dct):
+    """
+    Restrict user_features to members in data_train. The user_features will not 
+    change between runs. 
+
+    Return: 
+    -------
+    user_attrib: DataFrame
+        The unique members match the unique members of data_train, a requirement of rankfm. 
+    """
+    print(dct.keys())
+    data_train = dct['data_train']
+    user_attrib = dct['data_valid']
+    user_attrib = user_attrib[user_attrib['MEMBER_ID'].isin(data_train.MEMBER_ID)]
+    return user_attrib
+
+#----------------------------------------------------------------------------------------------
+
