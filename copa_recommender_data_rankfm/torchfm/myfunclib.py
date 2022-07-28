@@ -431,13 +431,18 @@ def test_accuracy(model, data_loader, device):
     count = 0
     # (d0, d1, d2): fields, neg, target
     for i, fields in enumerate(data_loader):
-        pos_float, neg_float, pos_emb, neg_emb = fields
+        print("i: ", i)
+        print("fields: ", fields.shape)  # (B, 3)
+        #pos_float, neg_float, pos_emb, neg_emb = fields
+        pos_emb = fields
+        print("fields: ", fields.shape)  # length: (16384, 3) = (B, 3)
+        print("pos_emb: ", pos_emb.shape)
         #print("pos_emb: ", pos_emb.shape)
 
 
         with torch.no_grad():
             # Ignore float attributes for now
-            y = model(pos_emb)
+            y = model(pos_emb)   # <<<<< ERROR in forward
 
         predicts.append(y)
         fields_.append(pos_emb)
@@ -459,6 +464,7 @@ def test_accuracy(model, data_loader, device):
     # Create a single dataframe
     #return roc_auc_score(targets, predicts)  # ERROR IN THIS ROUTINE
 
+    print(type(fields_), type(predicts))
     return fields_, predicts
 
 #--------------------------------------------------------------------------
@@ -508,6 +514,11 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
         members = members[0:keep_nb_members]
 
     pairs = []
+    print("all_dest len: ", len(all_dest))
+    print("members.shape: ", members.shape)
+
+    # How to create 
+
     for i, member in enumerate(members):
         for dest in all_dest:
             pairs.append((member, dest))
@@ -520,23 +531,58 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
     #print("pairs: ", pairs)  # the destinations are 'GRU', etc., not numbers. Why? 
 
     ### TEST ON TRAINING set first. Then on the DATA_VALID dataset. 
+    """
+    print("dataset_train: ", len(dct.dataset_train[0][0]))
+    print("dataset_train: ", len(dct.dataset_train[0][1]))
+    print("dataset_train: ", len(dct.dataset_train[0][2]))
+    print("dataset_train: ", len(dct.dataset_train[0][3]))
+    print("dataset_train: ", dct.dataset_train[0][0])
+    print("dataset_train: ", dct.dataset_train[0][1])
+    print("dataset_train: ", dct.dataset_train[0][2])
+    print("dataset_train: ", dct.dataset_train[0][3])
+    print("-------------------------------")
+    print("dataset_train: ", dct.dataset_train[1])
+    print("dataset_train: ", dct.dataset_train[10])
+    print("dataset_train: ", dct.dataset_train[100])
+    """
     loader = DataLoader(dct.dataset_train, batch_size=dct.batch_size, shuffle=True)
-    print("after loader")
-    print("dct: ", dct.keys())
-    print("data_train[3]: ", dct.dataset_train[3])
+
+    #print("after loader")
+    #print("dct: ", dct.keys())
+    #print("data_train[3]: ", dct.dataset_train[3])
 
     #for i,d in enumerate(loader.dataset):
         #print(i, len(d))
     #raise "Error"
 
-    print("batch_size: ", dct.batch_size)
+    #print("batch_size: ", dct.batch_size)
 
     # I MUST CONSTRUCT A NEW LOADER: For each member, all the destinations
     valid_loader = None   # MUST BE CONSTRUCTED <<<<<
 
+    class PairDataset():
+        """
+        Data already on device
+        """
+        def __init__(self, dct, pairs):
+            self.pairs = pairs
+            self.data = dct.dataset_train.data
+            self.members = self.data.drop_duplicates('MEMBER_ID')[['MEMBER_ID', 'GENDER']]
+            self.dest = self.data[['D']].drop_duplicates('D')
+            self.newp = self.members.merge(self.dest, how="cross")
+            self.newp = self.newp[['MEMBER_ID', 'D', 'GENDER']]
+        def __len__(self):
+            return pairs.shape[0]
+        def __getitem__(self, idx):
+            return self.newp.iloc[idx].values
+
+    pair_dataset = PairDataset(dct, pairs)
+    loader = DataLoader(pair_dataset, batch_size=4*4096)
+
     fields, predicts = test_accuracy(model, loader, dct.device)
     #pred = model.predict(pairs, cold_start='nan')   # <<< NO PREDICT. I should run the model  
 
+    print("pairs[10]: ", pairs[10])
     print("pairs: ", pairs.shape, pairs.columns)
     print("pred: ", predicts.shape)  # 42685
     print("pairs columns: ", pairs.columns)
@@ -548,6 +594,7 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
     res1 = pairs.groupby('MEMBER_ID').agg({'D':list, 'pred':list})
 
     res1['argsort'] = res1['pred'].apply(lambda x: np.argsort(x)[::-1])
+    #------------------------------------------------------------------------------------------------------
 
     def extract_topN(res1, topn):
         def argsortcolD(row):
