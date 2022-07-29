@@ -446,7 +446,14 @@ def test_accuracy(model, data_loader, device):
 
 #--------------------------------------------------------------------------
 def compute_hits_1(model, loader, dct, members, pairs, topN, valid_dest_sets):
+    print("==> compute_hits_1, pairs: ", pairs.shape)
+
     fields, predicts = test_accuracy(model, loader, dct.device)  # cost: 3.8 sec
+    print("==> compute_hits_1, predicts: ", predicts.shape)
+
+    assert pairs.shape[0] == predicts.shape[0],  \
+        "compute_hits_1: pairs and predicts must have the same number of rows."
+
     pairs['pred'] = predicts
     res1 = pairs.groupby('MEMBER_ID').agg({'D':list, 'pred':list})
     res1['argsort'] = res1['pred'].apply(lambda x: np.argsort(x)[::-1])
@@ -465,6 +472,35 @@ def compute_hits_1(model, loader, dct, members, pairs, topN, valid_dest_sets):
     return hit_rate, res1
 
 #--------------------------------------------------------------------------
+"""
+def compute_hits_2(model, loader, dct, members, pairs, topN, valid_dest_sets):
+    print("==> compute_hits_2, pairs: ", pairs.shape)
+
+    fields, predicts = test_accuracy(model, loader, dct.device)  
+    print("==> compute_hits_2, predicts: ", predicts.shape)
+
+    assert pairs.shape[0] == predicts.shape[0],  \
+        "compute_hits_2: pairs and predicts must have the same number of rows."
+
+    pairs['pred'] = predicts
+    res1 = pairs.groupby('MEMBER_ID').agg({'D':list, 'pred':list})
+    res1['argsort'] = res1['pred'].apply(lambda x: np.argsort(x)[::-1])
+    # return  # 5.4
+    res2 = extract_topN(res1, topn=topN)
+
+    v_df = valid_dest_sets.drop('MEMBER_ID', axis=1).reset_index()
+    r_df = res2.reset_index()
+    df = v_df.merge(r_df, how='inner', on='MEMBER_ID')
+
+    def intersect(row):
+        return min(len(row['D'].intersection(row['D1'])), 1)
+
+    df['hits'] = df.apply(intersect, axis=1)
+    hit_rate =  df['hits'].sum() / len(members)
+    return hit_rate, res1
+"""
+
+#-----------------------------------
 def extract_topN(res1, topn):
     # Perform the topN ranking
     def argsortcolD(row):
@@ -485,136 +521,40 @@ def flatten(lst_of_lists):
 
 #--------------------------------------------------------------------------
 def hetero_MD_df(members, valid_dest_sets):
-    #Mlist = members
-    #valid_dest_sets["lists"] = valid_dest_sets["neg_set"].apply(lambda x: list(x))
-    #print(f"hetero: valid_dest_sets: {valid_dest_sets.shape}: \n{valid_dest_sets.list{5}")
-
-    # members in the valid_dest_sets list
+    """
+    members in the valid_dest_sets list
+    """
     Mlist = list(valid_dest_sets.MEMBER_ID.values)
-    #print("Mlist: ", Mlist[0:5])
-
-    DD = list( valid_dest_sets["neg_set"].apply(lambda x: list(x)).values )
-    #print("hetero: DD: \n", len(DD), DD[0:5])
-    MM = [ [Mlist[i]] * len(DD[i]) for i in range(len(Mlist)) ]
-    #print("hetero: MM: \n", len(MM), MM[0:5])
-    df_flat = pd.DataFrame({'MM': flatten(MM), 'DD': flatten(DD)})
-    return df_flat
-
-#--------------------------------------------------------------------------
-def compute_hits_2(members, train_dest_sets, valid_dest_sets):
-    hits = 0
-    nb_members = len(members)
-    print("compute_hits, nb_members: ", nb_members)
-
-    for member in members:
-        try:
-            td = train_dest_sets.loc[member]  # train destinations (set)
-        except:
-            nb_members -= 1  # Member not found in training set. This should not happen. 
-            continue
-        set_valid = valid_dest_sets.loc[member]
-        vd = set_valid['D']    # validation destinations (set)
-        rp = res2.loc[member, 'D1'] # ranked prediction (ndarray)
-        rk = []
-        for d in rp:
-            if d in td['D']: 
-                continue
-            rk.append(d)
-            if len(rk) == topN:
-                break
-
-        if len(rk) != topN:
-            print("len(rk): ", len(rk))
-        if len(rk) < topN:
-            print("==> member: ", member)
-            print("    vd = ", vd, "    (validation dest)")
-            print("    td= ", td.values, "  (training dest)")
-            print("    rk= ", rk[0:10], "   (ranked dest)")
-            print("    rp= ", rp, "    (trimmed ranked dest)")
-            print("    len(vd): ", len(vd), "   , len(td): ", len(td))     
-        if vd.intersection(rk):
-            hits += 1
-
-#--------------------------------------------------------------------------
-def compute_hits_2_faster(members, train_dest_sets, valid_dest_sets, res2):
-    hits = 0
-    nb_members = len(members)
-    print("compute_hits_faster, nb_members: ", nb_members)
-
-    # Step 1: Only work with members
-    td_df = train_dest_sets.loc[members]
-    set_valid_df = valid_dest_sets.loc[members]
-    print("td_df: ", td_df.shape, td_df.columns)  # D, MEMBER_ID
-    print("set_valid_df: ", set_valid_df.shape, set_valid_df.columns) # D, MEMBER_ID
-    vd_df = set_valid_df['D']
-    rp_df = res2.loc[members, ['D1']]  # ['D1'] so that rp_df is a dataframe
-    print("rp_df: ", rp_df.shape)
-    print(rp_df.head())
-
-    for member in members:
-        # continue  # 6.4
-        """
-        try:
-            td = train_dest_sets.loc[member]  # train destinations (set)
-        except:
-            nb_members -= 1  # Member not found in training set. This should not happen. 
-            continue
-        set_valid = valid_dest_sets.loc[member]
-        vd = set_valid['D']    # validation destinations (set)
-        """
-        #continue  # 6.11
-        rk = []
-        rp = res2.loc[member, 'D1'] # ranked prediction (ndarray), list of D
-        print("rp: ", rp)
-
-        # td['D'] list of destinations by this member in training set
-        # rp: ranked destinations for this member 
-
-        # rp: list of ranked destination recommendations for member
-        # td: list of destinations by member in training set
-
-        for d in rp:
-            if d in td['D']: 
-                continue
-            rk.append(d)
-            if len(rk) == topN:
-                break
-        continue  # 8.76
-
-        # If the next two conditionals are triggered, it means that the number of new destinations
-        # is either 
-        #     1) not equal to the number requested 
-        #     2) less than the number requested 
-        if len(rk) != topN:
-            print("len(rk): ", len(rk))
-        if len(rk) < topN:
-            print("==> member: ", member)
-            print("    vd = ", vd, "    (validation dest)")
-            print("    td= ", td.values, "  (training dest)")
-            print("    rk= ", rk[0:10], "   (ranked dest)")
-            print("    rp= ", rp, "    (trimmed ranked dest)")
-            print("    len(vd): ", len(vd), "   , len(td): ", len(td))     
-        if vd.intersection(rk):
-            hits += 1
+    D = list( valid_dest_sets["neg_set"].apply(lambda x: list(x)).values )
+    M = [ [Mlist[i]] * len(D[i]) for i in range(len(Mlist)) ]
+    pairs = pd.DataFrame({'MEMBER_ID': flatten(M), 'D': flatten(D)})
+    return pairs
 
 #--------------------------------------------------------------------------
 class PairDataset():
     """
     Data already on device
     """
-    def __init__(self, dct, pairs, data_valid):
+    def __init__(self, dct, data_valid):
         """
         Arguments: 
         ---------
         data_valid: (DataFrame)
             All members of data_valid appear in the training set
         """
-        self.pairs = pairs
+        # If pairs decreases in size, self.newp should decrease in size
+
+        # I SHOULD NOT REQUIRE PAIRS
+        #print("PairDataset, pairs, data_valid: ", pairs.shape, data_valid.shape)
+        #self.pairs = pairs
         self.data = data_valid
         self.members = self.data.drop_duplicates('MEMBER_ID')[['MEMBER_ID', 'GENDER']]
         self.dest = dct.dataset_train.data[['D']].drop_duplicates('D')
+        # tensor product of two dataframes. 
         self.newp = self.members.merge(self.dest, how="cross")
+        print("self.newp: ", self.newp.shape)
         self.newp = self.newp[['MEMBER_ID', 'D', 'GENDER']]
+        self.pairs = self.newp[['MEMBER_ID', 'D']]  # I should not need this
 
         # Drop from pairs all members not in self.data
         self.newp = tt(self.newp.values).to(dct.device)
@@ -703,24 +643,29 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
     if keep_nb_members != None:
         members = members[0:keep_nb_members]
 
-    pairs = []
+    #pairs = []
 
     # How to create 
-    for i, member in enumerate(members):
-        for dest in all_dest:
-            pairs.append((member, dest))
+    #for i, member in enumerate(members):
+        #for dest in all_dest:
+            #pairs.append((member, dest))
 
-    pairs = pd.DataFrame(pairs, columns=['MEMBER_ID','D'])  # (26235,2)
-    print("pairs.shape: ", pairs.shape) # 2M records. For each member, 80 destinations
+    #pairs = pd.DataFrame(pairs, columns=['MEMBER_ID','D'])  # (26235,2)
+    #print(f"step 1, pairs.head(5): {pairs.shape}\n", pairs.head(5))
+    #print("step 1, pairs.shape: ", pairs.shape) # 2M records. For each member, 80 destinations
 
-    pair_dataset = PairDataset(dct, pairs, data_valid)
-    loader = DataLoader(pair_dataset, batch_size=4*4096, shuffle=False) # False for debugging
-
+    #-------------------------------------------
     # STEP 1: fix the hit rate without filtering
+    pair_dataset = PairDataset(dct, data_valid)
+    pairs = pair_dataset.pairs  # (MEMBER_ID, D)
+    loader = DataLoader(pair_dataset, batch_size=4*4096, shuffle=False) # False for debugging
     results = compute_hits_1(model, loader, dct, members, pairs, topN, valid_dest_sets)
     hr_not_filtered, res1 = results
+
+    print("step 1, pair_dataset: ", len(pair_dataset))  # (1233506, 2)
+    print("step 1, data_valid.shape: ", data_valid.shape) # 55,073
     print("hit rate (without previous filter) = ", hr_not_filtered)  # 0.36 (Should be higher). 
-    #------------------------------------------------------------------------------------------------------
+    #-------------------------------------------
 
     # Remove training D from the destinations to check
     # For each member, construct a list or set of D to check. 
@@ -753,9 +698,12 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
     # flights actually flown in the validation set. 
     # Remove from the recommended flights, any flights found in the training set. 
 
+    #-------------------------------------------
+    # STEP 2: fix the hit rate with filtering
+    #-------------------------------------------
+
     print("res1.columns: ", res1.columns)
     # return
-    res2 = extract_topN(res1, topn=8*topN)
 
     print("train_dest_sets: ", train_dest_sets.shape, train_dest_sets.columns)  # (18578,2) (D, MEMBER_ID) (WHY THIS SHAPE?)
 
@@ -764,35 +712,54 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
     # Add a new column with the destinations to check in the recommender (all destinations minus the ones in the training set)
     #print("train_dest_sets: ", train_dest_sets)
 
-    # Collect the members in the validation set
+    # Collect the training destination sets of all members in the validation set
     trai = train_dest_sets[train_dest_sets.MEMBER_ID.isin(valid_dest_sets.MEMBER_ID)]  # (16669, 2)
-    #print(f"valid_dest_sets: {valid_dest_sets.shape}\n")  # (26235, 2)
-    #print("nb destinations in training set: ", all_dest)
+    print(f"trai (members in validation set): {trai.shape}\n", trai)
 
-    #print(f"trai (members in validation set): {trai.shape}\n", trai)
+    # All destinations in training set
     all_dest_set = set(all_dest)
-    trai['neg_set'] = trai['D'].map(lambda x: all_dest_set.difference(x))
-    #print(f"trai (members in validation set): {trai.shape}\n", trai)
+    print("len all_dest_set: ", len(all_dest_set))
 
+    # Add a column 'neg_set": set of destinations not travelled by members in the validation set
+    trai['neg_set'] = trai['D'].map(lambda x: all_dest_set.difference(x))  # (16669, 3)`
+    print("trai: ", trai.shape)  # (16669, 3)
 
     # compute pairs when each member has a different number of destinations
-    df_flat = hetero_MD_df(members, trai)
-    print(f"df_flat.shape: {df_flat.shape}\n", df_flat.head(5))
+    pairs = hetero_MD_df(members, trai)
+    print(f"step 2, pairs.head(5): {pairs.shape}\n", pairs.head(5))
+    print("step 2, pairs.shape: ", pairs.shape) # 1193346
+    print("step 2, pairs.column: ", pairs.columns) 
+    print("step 2, data_valid.shape: ", data_valid.shape) # 55073
 
-    return # 6.8
-    raise "ERROR"
+    # pairs has 1233506 rows. 
+    # pairs should now have 1193346 rows
+    
+    class myPairDataset(Dataset):
+        def __init__(self, data, dct):
+            data['GENDER'] = 0  # <<< ERROR. Use real GENDER
+            print("data.columns: ", data.columns)  # MEMBER_ID, D  (GENDER MISSING)
+            self.data = tt(data.copy().values).to(dct.device)
+        def __len__(self):
+            return self.data.shape[0]
+        def __getitem__(self, idx):
+            return self.data[idx,:]
 
-    #----------------------
+    pair_dataset = myPairDataset(pairs, dct)
+    #pair_dataset = PairDataset(dct, pairs, data_valid)
+    print("step 2, pair_dataset: ", len(pair_dataset))  # (1233506, 2) (should be lower)
+    print("step 2, data_valid.shape: ", data_valid.shape) # 55073
 
-    compute_hits_2_faster(members, train_dest_sets, valid_dest_sets, res2)
+    loader = DataLoader(pair_dataset, batch_size=4*4096, shuffle=False) # False for debugging
+
+    results = compute_hits_1(model, loader, dct, members, pairs, topN, valid_dest_sets)
+    hr_filtered, res1 = results
+    print("hit rate (with previous filter) = ", hr_filtered)  # 0.40 (Seems low). 0.65 without filter (seems reasonable, with 30 epochs). 
+    #  0.60 without filter and 50 epochs. 
 
     # I should also print how many are correct out of the number of actual trips. TO DO.  MYHouse 
     # Identical to the hit rate built into rankfm! That is great!
-    print("no filter, nb_members: ", nb_members)
-    hr_filtered = hits/nb_members
-    print("hit rate (with previous filter) = ", hr_filtered)
 
-    return pairs, hr_notfiltered, hr_filtered
+    return pairs, hr_not_filtered, hr_filtered
 #---------------------------------------------------------------------------------------------------
 def restrict_member_attrib(dct):
     """
