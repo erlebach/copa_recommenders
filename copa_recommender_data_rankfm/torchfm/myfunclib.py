@@ -3,6 +3,7 @@ import random
 import pandas as pd
 import numpy as np
 import torch 
+import itertools
 from torch.utils.data import DataLoader, Dataset
 
 tt = torch.tensor
@@ -429,16 +430,7 @@ def test_accuracy(model, data_loader, device):
     fields_ = []
     predicts = []
     count = 0
-    # (d0, d1, d2): fields, neg, target
-    for i, fields in enumerate(data_loader):
-        print("i: ", i)
-        print("fields: ", fields.shape)  # (B, 3)
-        #pos_float, neg_float, pos_emb, neg_emb = fields
-        pos_emb = fields
-        print("fields: ", fields.shape)  # length: (16384, 3) = (B, 3)
-        print("pos_emb: ", pos_emb.shape)
-        #print("pos_emb: ", pos_emb.shape)
-
+    for i, pos_emb in enumerate(data_loader):
 
         with torch.no_grad():
             # Ignore float attributes for now
@@ -447,212 +439,78 @@ def test_accuracy(model, data_loader, device):
         predicts.append(y)
         fields_.append(pos_emb)
 
-    #print("len(fields): ", len(fields))
-    #for i in range(len(fields)):
-        #print(f"shape field {i}: {fields[i].shape}")
-        #print(f"shape predict {i}: {predicts[i].shape}")
+    predicts = torch.cat(predicts, axis=0).to('cpu')
+    fields_  = torch.cat(fields_, axis=0).to('cpu')
 
-    predicts = torch.cat(predicts[:], axis=0)
-    fields_  = torch.cat(fields_[:], axis=0)
-
-    predicts = predicts.to('cpu')
-    fields_ = fields_.to('cpu')
-
-    #print("predicts: ", predicts.shape)
-    #print("fields_: ", fields_.shape)
-
-    # Create a single dataframe
-    #return roc_auc_score(targets, predicts)  # ERROR IN THIS ROUTINE
-
-    print(type(fields_), type(predicts))
     return fields_, predicts
 
 #--------------------------------------------------------------------------
-def recommender(model, dct, topN=5, keep_nb_members=None):
-    """
-    Compute the hit_rate to evaluate destinations
-
-    Arguments: 
-    ---------
-    model
-    interactions_dct: dictionary
-    topN: [5]
-        number of elements to keep
-    keep_members: [None]
-        number of members to consider in validation
-
-    Return
-    ------
-    pair: list of pairs (MEMBER_ID, D) used to validate
-
-    """
-    user_attrib = restrict_member_attrib(dct)
-    data_train = dct['data_train']
-    data_valid = dct['data_valid']
-    all_data = dct['df_members']
-    all_dest= np.asarray(sorted(list(all_data.D.unique())))
-
-    # Translate all_dest from destinations with 'PTY' into an integer
-    dest_idx = [dct.dest2idx[dest] for dest in all_dest]
-    all_dest = dest_idx
-
-    train_dest_sets = data_train.groupby('MEMBER_ID').agg({'D':set})
-    valid_dest_sets = data_valid.groupby('MEMBER_ID').agg({'D':set})
-    dct['train_dest_sets'] = train_dest_sets
-    dct['valid_dest_sets'] = valid_dest_sets
-
-    # For each member in the validation set, estimate the scores for all destinations. 
-    members = data_valid.MEMBER_ID.unique()  # ndarray of members
-
-    # Access MEMBER_ID via index or column
-    valid_dest_sets['MEMBER_ID'] = valid_dest_sets.index
-    train_dest_sets['MEMBER_ID'] = train_dest_sets.index
-
-    # Keep a small number of members
-
-    if keep_nb_members != None:
-        members = members[0:keep_nb_members]
-
-    pairs = []
-    print("all_dest len: ", len(all_dest))
-    print("members.shape: ", members.shape)
-
-    # How to create 
-
-    for i, member in enumerate(members):
-        for dest in all_dest:
-            pairs.append((member, dest))
-
-    pairs = pd.DataFrame(pairs, columns=['MEMBER_ID','D'])
-    print("pairs.shape: ", pairs.shape) # 2M records. For each member, 80 destinations
-    #print("data_train: ", data_train.head())
-    #print("data_valid: ", data_valid.head())  
-    # pred will be of smaller size than pairs if cold_start is 'drop'
-    #print("pairs: ", pairs)  # the destinations are 'GRU', etc., not numbers. Why? 
-
-    ### TEST ON TRAINING set first. Then on the DATA_VALID dataset. 
-    """
-    print("dataset_train: ", len(dct.dataset_train[0][0]))
-    print("dataset_train: ", len(dct.dataset_train[0][1]))
-    print("dataset_train: ", len(dct.dataset_train[0][2]))
-    print("dataset_train: ", len(dct.dataset_train[0][3]))
-    print("dataset_train: ", dct.dataset_train[0][0])
-    print("dataset_train: ", dct.dataset_train[0][1])
-    print("dataset_train: ", dct.dataset_train[0][2])
-    print("dataset_train: ", dct.dataset_train[0][3])
-    print("-------------------------------")
-    print("dataset_train: ", dct.dataset_train[1])
-    print("dataset_train: ", dct.dataset_train[10])
-    print("dataset_train: ", dct.dataset_train[100])
-    """
-    loader = DataLoader(dct.dataset_train, batch_size=dct.batch_size, shuffle=True)
-
-    #print("after loader")
-    #print("dct: ", dct.keys())
-    #print("data_train[3]: ", dct.dataset_train[3])
-
-    #for i,d in enumerate(loader.dataset):
-        #print(i, len(d))
-    #raise "Error"
-
-    #print("batch_size: ", dct.batch_size)
-
-    # I MUST CONSTRUCT A NEW LOADER: For each member, all the destinations
-    valid_loader = None   # MUST BE CONSTRUCTED <<<<<
-
-    class PairDataset():
-        """
-        Data already on device
-        """
-        def __init__(self, dct, pairs):
-            self.pairs = pairs
-            self.data = dct.dataset_train.data
-            self.members = self.data.drop_duplicates('MEMBER_ID')[['MEMBER_ID', 'GENDER']]
-            self.dest = self.data[['D']].drop_duplicates('D')
-            self.newp = self.members.merge(self.dest, how="cross")
-            self.newp = self.newp[['MEMBER_ID', 'D', 'GENDER']]
-        def __len__(self):
-            return pairs.shape[0]
-        def __getitem__(self, idx):
-            return self.newp.iloc[idx].values
-
-    pair_dataset = PairDataset(dct, pairs)
-    loader = DataLoader(pair_dataset, batch_size=4*4096)
-
-    fields, predicts = test_accuracy(model, loader, dct.device)
-    #pred = model.predict(pairs, cold_start='nan')   # <<< NO PREDICT. I should run the model  
-
-    print("pairs[10]: ", pairs[10])
-    print("pairs: ", pairs.shape, pairs.columns)
-    print("pred: ", predicts.shape)  # 42685
-    print("pairs columns: ", pairs.columns)
-
-    raise "ERROR"  # Reached this point 
-
-    #-------------------
-
+def compute_hits_1(model, loader, dct, members, pairs, topN, valid_dest_sets):
+    fields, predicts = test_accuracy(model, loader, dct.device)  # cost: 3.8 sec
+    pairs['pred'] = predicts
     res1 = pairs.groupby('MEMBER_ID').agg({'D':list, 'pred':list})
-
     res1['argsort'] = res1['pred'].apply(lambda x: np.argsort(x)[::-1])
-    #------------------------------------------------------------------------------------------------------
-
-    def extract_topN(res1, topn):
-        def argsortcolD(row):
-            return np.array(row['D'])[row['argsort'][0:topn]]
-
-        def argsortcolPred(row):
-            return np.array(row['pred'])[row['argsort'][0:topn]]
-
-        res1['D1'] = res1.apply(argsortcolD, axis=1)
-        res1['pred1'] = res1.apply(argsortcolPred, axis=1)
-        res2 = res1.drop(['D','pred', 'argsort'], axis=1)  # lists or ndarray:w
-        return res2
-
+    # return  # 5.4
     res2 = extract_topN(res1, topn=topN)
 
-    # res2 has columns 'D1' and 'pred1': 
-    # 'D1' predicted destinations
-    # 'scores' predicted scores in ranked drder
+    v_df = valid_dest_sets.drop('MEMBER_ID', axis=1).reset_index()
+    r_df = res2.reset_index()
+    df = v_df.merge(r_df, how='inner', on='MEMBER_ID')
 
-#  First issue: even when running 500 epochs, the scores are a mixture of neg and positive. WHY? 
-#  I wonder if this is true with the training data? 
+    def intersect(row):
+        return min(len(row['D'].intersection(row['D1'])), 1)
 
-    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
-    # flights actually flown in the validation set. 
-    # Keep all recommended flights even if found in th e # training set. 
+    df['hits'] = df.apply(intersect, axis=1)
+    hit_rate =  df['hits'].sum() / len(members)
+    return hit_rate, res1
 
+#--------------------------------------------------------------------------
+def extract_topN(res1, topn):
+    # Perform the topN ranking
+    def argsortcolD(row):
+        return np.array(row['D'])[row['argsort'][0:topn]]
 
-    # Do not filter out hits in the training set
-    hits = 0
-    for member in members: 
-        set_valid = valid_dest_sets.loc[member]
-        valid_dests = set_valid['D']  # set
-        ranked_dests = res2.loc[member, 'D1']  # ndarray
-        # Recall that above, I kept topN+2 ranked elements for the non-filtered case
-        if valid_dests.intersection(ranked_dests):
-            hits += 1
+    def argsortcolPred(row):
+        return np.array(row['pred'])[row['argsort'][0:topn]]
 
-    hr_notfiltered = hits/len(members)
-    print("hit rate (without previous filter) = ", hr_notfiltered)
+    res1['D1'] = res1.apply(argsortcolD, axis=1)
+    res1['pred1'] = res1.apply(argsortcolPred, axis=1)
+    res2 = res1[['D1', 'pred1']]
+    return res2
 
-    # Filter out hits in the training set
-    # Inefficient implementation
-    # Calculate the number of this when filtered
-    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
-    # flights actually flown in the validation set. 
-    # Remove from the recommended flights, any flights found in the training set. 
+#--------------------------------------------------------------------------
+def flatten(lst_of_lists):
+    # Flatten a list of lists
+    return list(itertools.chain(*lst_of_lists))
 
-    res2 = extract_topN(res1, topn=8*topN)
-    #print("res2: ", res2)
+#--------------------------------------------------------------------------
+def hetero_MD_df(members, valid_dest_sets):
+    #Mlist = members
+    #valid_dest_sets["lists"] = valid_dest_sets["neg_set"].apply(lambda x: list(x))
+    #print(f"hetero: valid_dest_sets: {valid_dest_sets.shape}: \n{valid_dest_sets.list{5}")
 
+    # members in the valid_dest_sets list
+    Mlist = list(valid_dest_sets.MEMBER_ID.values)
+    #print("Mlist: ", Mlist[0:5])
+
+    DD = list( valid_dest_sets["neg_set"].apply(lambda x: list(x)).values )
+    #print("hetero: DD: \n", len(DD), DD[0:5])
+    MM = [ [Mlist[i]] * len(DD[i]) for i in range(len(Mlist)) ]
+    #print("hetero: MM: \n", len(MM), MM[0:5])
+    df_flat = pd.DataFrame({'MM': flatten(MM), 'DD': flatten(DD)})
+    return df_flat
+
+#--------------------------------------------------------------------------
+def compute_hits_2(members, train_dest_sets, valid_dest_sets):
     hits = 0
     nb_members = len(members)
+    print("compute_hits, nb_members: ", nb_members)
+
     for member in members:
-        # print("member: ", member)
         try:
             td = train_dest_sets.loc[member]  # train destinations (set)
         except:
-            nb_members -= 1
+            nb_members -= 1  # Member not found in training set. This should not happen. 
             continue
         set_valid = valid_dest_sets.loc[member]
         vd = set_valid['D']    # validation destinations (set)
@@ -677,18 +535,268 @@ def recommender(model, dct, topN=5, keep_nb_members=None):
         if vd.intersection(rk):
             hits += 1
 
-    # I should also print how many correct out of the number of actual trips. TO DO.  MYHouse 
+#--------------------------------------------------------------------------
+def compute_hits_2_faster(members, train_dest_sets, valid_dest_sets, res2):
+    hits = 0
+    nb_members = len(members)
+    print("compute_hits_faster, nb_members: ", nb_members)
 
+    # Step 1: Only work with members
+    td_df = train_dest_sets.loc[members]
+    set_valid_df = valid_dest_sets.loc[members]
+    print("td_df: ", td_df.shape, td_df.columns)  # D, MEMBER_ID
+    print("set_valid_df: ", set_valid_df.shape, set_valid_df.columns) # D, MEMBER_ID
+    vd_df = set_valid_df['D']
+    rp_df = res2.loc[members, ['D1']]  # ['D1'] so that rp_df is a dataframe
+    print("rp_df: ", rp_df.shape)
+    print(rp_df.head())
+
+    for member in members:
+        # continue  # 6.4
+        """
+        try:
+            td = train_dest_sets.loc[member]  # train destinations (set)
+        except:
+            nb_members -= 1  # Member not found in training set. This should not happen. 
+            continue
+        set_valid = valid_dest_sets.loc[member]
+        vd = set_valid['D']    # validation destinations (set)
+        """
+        #continue  # 6.11
+        rk = []
+        rp = res2.loc[member, 'D1'] # ranked prediction (ndarray), list of D
+        print("rp: ", rp)
+
+        # td['D'] list of destinations by this member in training set
+        # rp: ranked destinations for this member 
+
+        # rp: list of ranked destination recommendations for member
+        # td: list of destinations by member in training set
+
+        for d in rp:
+            if d in td['D']: 
+                continue
+            rk.append(d)
+            if len(rk) == topN:
+                break
+        continue  # 8.76
+
+        # If the next two conditionals are triggered, it means that the number of new destinations
+        # is either 
+        #     1) not equal to the number requested 
+        #     2) less than the number requested 
+        if len(rk) != topN:
+            print("len(rk): ", len(rk))
+        if len(rk) < topN:
+            print("==> member: ", member)
+            print("    vd = ", vd, "    (validation dest)")
+            print("    td= ", td.values, "  (training dest)")
+            print("    rk= ", rk[0:10], "   (ranked dest)")
+            print("    rp= ", rp, "    (trimmed ranked dest)")
+            print("    len(vd): ", len(vd), "   , len(td): ", len(td))     
+        if vd.intersection(rk):
+            hits += 1
+
+#--------------------------------------------------------------------------
+class PairDataset():
+    """
+    Data already on device
+    """
+    def __init__(self, dct, pairs, data_valid):
+        """
+        Arguments: 
+        ---------
+        data_valid: (DataFrame)
+            All members of data_valid appear in the training set
+        """
+        self.pairs = pairs
+        self.data = data_valid
+        self.members = self.data.drop_duplicates('MEMBER_ID')[['MEMBER_ID', 'GENDER']]
+        self.dest = dct.dataset_train.data[['D']].drop_duplicates('D')
+        self.newp = self.members.merge(self.dest, how="cross")
+        self.newp = self.newp[['MEMBER_ID', 'D', 'GENDER']]
+
+        # Drop from pairs all members not in self.data
+        self.newp = tt(self.newp.values).to(dct.device)
+    def __len__(self):
+        return self.newp.shape[0]
+    def __getitem__(self, idx):
+        return self.newp[idx,:]
+
+#--------------------------------------------------------------------------
+def recommender(model, dct, topN=5, keep_nb_members=None):
+    """
+    Compute the hit_rate to evaluate destinations
+
+    Arguments: 
+    ---------
+    model
+    interactions_dct: dictionary
+    topN: [5]
+        number of elements to keep
+    keep_members: [None]
+        number of members to consider in validation
+
+    Return
+    ------
+    pair: list of pairs (MEMBER_ID, D) used to validate
+
+    """
+    # Only keep users in the training set
+    # user_attrib is build from the validation dataset with only users in the training set. 
+    user_attrib = restrict_member_attrib(dct)
+
+    print("user_attrib: ", user_attrib.shape) # 55073 rows left (out of 72380 in validation set)
+    print("data_valid unique members: ", dct.data_valid.MEMBER_ID.nunique())  # 26235
+    print("user_attrib unique members: ", user_attrib.MEMBER_ID.nunique())  # 16669
+
+    data_train = dct['data_train']
+    #data_valid = dct['data_valid']
+    data_valid = user_attrib   # (members not in training set have been removed) (16669)
+
+    print("data_valid: ", data_valid.shape)
+
+    all_data = dct['df_members']
+    all_dest= np.asarray(sorted(list(all_data.D.unique())))
+
+    #return # 20 ms
+
+    # Translate all_dest from destinations with 'PTY' into an integer
+    # To be consistent with labeling during training phase
+    dest_idx = [dct.dest2idx[dest] for dest in all_dest]
+    all_dest = dest_idx  # (86) total destinations at Copa
+    print("all_dest len: ", len(all_dest))  # 86
+
+    # Restrict all_dest to the destinations in the training set
+    # since those are the datasets the model is trained on
+    all_dest = data_train['D'].unique()
+    print("nb of unique dest in the training set: ", all_dest.shape)  # 74
+    print("nb of unique dest in the validation set: ", data_valid['D'].unique().shape)  # 76
+
+    train_dest_sets = data_train.groupby('MEMBER_ID').agg({'D':set})
+    valid_dest_sets = data_valid.groupby('MEMBER_ID').agg({'D':set})
+
+    # Remove from valid_dest_sets all users not in the training set
+
+    dct['train_dest_sets'] = train_dest_sets
+    dct['valid_dest_sets'] = valid_dest_sets
+
+    # For each member in the validation set, estimate the scores for all destinations. 
+    members = data_valid.MEMBER_ID.unique()  # ndarray of members
+
+    # Only keep members in the training set (avoid cold-start problem)
+    members_training_set = set(data_train.MEMBER_ID.unique())
+    members_valid_set    = set(members)
+    members = np.array(list(members_valid_set.intersection(members_training_set)))
+
+    # Restrict valid data set to the members in the training set
+    data_valid_nocold = data_valid.set_index('MEMBER_ID', drop='True').loc[members].reset_index()
+
+    data_valid = data_valid_nocold.copy()  # Does not overwrite dct.data_valid
+
+    # Access MEMBER_ID via index or column
+    valid_dest_sets['MEMBER_ID'] = valid_dest_sets.index
+    train_dest_sets['MEMBER_ID'] = train_dest_sets.index
+
+    # Keep a small number of members
+
+    if keep_nb_members != None:
+        members = members[0:keep_nb_members]
+
+    pairs = []
+
+    # How to create 
+    for i, member in enumerate(members):
+        for dest in all_dest:
+            pairs.append((member, dest))
+
+    pairs = pd.DataFrame(pairs, columns=['MEMBER_ID','D'])  # (26235,2)
+    print("pairs.shape: ", pairs.shape) # 2M records. For each member, 80 destinations
+
+    pair_dataset = PairDataset(dct, pairs, data_valid)
+    loader = DataLoader(pair_dataset, batch_size=4*4096, shuffle=False) # False for debugging
+
+    # STEP 1: fix the hit rate without filtering
+    results = compute_hits_1(model, loader, dct, members, pairs, topN, valid_dest_sets)
+    hr_not_filtered, res1 = results
+    print("hit rate (without previous filter) = ", hr_not_filtered)  # 0.36 (Should be higher). 
+    #------------------------------------------------------------------------------------------------------
+
+    # Remove training D from the destinations to check
+    # For each member, construct a list or set of D to check. 
+    # Construct a list of (MEMBER_ID, D, GENDER) to check against. 
+    # How to construct this list efficiently? In Julia or C++, I could use loops. 
+
+    #def remove_trai
+
+    #return # 5.8s
+
+    # res2 has columns 'D1' and 'pred1': 
+    # 'D1' predicted destinations
+    # 'scores' predicted scores in ranked drder
+
+#  First issue: even when running 500 epochs, the scores are a mixture of neg and positive. WHY? 
+#  I wonder if this is true with the training data? 
+
+    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
+    # flights actually flown in the validation set. 
+    # Keep all recommended flights even if one or more D are found in the training set. 
+
+    # Do not filter out hits in the training set
+
+    #====================================================================================================
+
+    # Filter out hits in the training set
+    # Inefficient implementation
+    # Calculate the number of hits when filtered
+    # Calculate hit rate assuming a hit if "at least" one of topN predictions is in the 
+    # flights actually flown in the validation set. 
+    # Remove from the recommended flights, any flights found in the training set. 
+
+    print("res1.columns: ", res1.columns)
+    # return
+    res2 = extract_topN(res1, topn=8*topN)
+
+    print("train_dest_sets: ", train_dest_sets.shape, train_dest_sets.columns)  # (18578,2) (D, MEMBER_ID) (WHY THIS SHAPE?)
+
+    # Storing lists in Dataframe columns is not a good idea. 
+
+    # Add a new column with the destinations to check in the recommender (all destinations minus the ones in the training set)
+    #print("train_dest_sets: ", train_dest_sets)
+
+    # Collect the members in the validation set
+    trai = train_dest_sets[train_dest_sets.MEMBER_ID.isin(valid_dest_sets.MEMBER_ID)]  # (16669, 2)
+    #print(f"valid_dest_sets: {valid_dest_sets.shape}\n")  # (26235, 2)
+    #print("nb destinations in training set: ", all_dest)
+
+    #print(f"trai (members in validation set): {trai.shape}\n", trai)
+    all_dest_set = set(all_dest)
+    trai['neg_set'] = trai['D'].map(lambda x: all_dest_set.difference(x))
+    #print(f"trai (members in validation set): {trai.shape}\n", trai)
+
+
+    # compute pairs when each member has a different number of destinations
+    df_flat = hetero_MD_df(members, trai)
+    print(f"df_flat.shape: {df_flat.shape}\n", df_flat.head(5))
+
+    return # 6.8
+    raise "ERROR"
+
+    #----------------------
+
+    compute_hits_2_faster(members, train_dest_sets, valid_dest_sets, res2)
+
+    # I should also print how many are correct out of the number of actual trips. TO DO.  MYHouse 
     # Identical to the hit rate built into rankfm! That is great!
+    print("no filter, nb_members: ", nb_members)
     hr_filtered = hits/nb_members
     print("hit rate (with previous filter) = ", hr_filtered)
-
 
     return pairs, hr_notfiltered, hr_filtered
 #---------------------------------------------------------------------------------------------------
 def restrict_member_attrib(dct):
     """
-    Restrict user_features to members in data_train. The user_features will not 
+    Restrict user_features in dct['data_valid'to members in data_train. The user_features will not 
     change between runs. 
 
     Return: 
@@ -703,4 +811,3 @@ def restrict_member_attrib(dct):
     return user_attrib
 
 #----------------------------------------------------------------------------------------------
-
